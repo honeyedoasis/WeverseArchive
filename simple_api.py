@@ -53,27 +53,25 @@ def make_extractor():
     ext = WeverseIE()
     ext.set_downloader(ydl)
     ext.initialize()
-    # ext._initialize_pre_login()
-    # ext._real_initialize()
-    # ext._ready = True
     return ext
 
 def get_next_page(json_data):
     paging = json_data['paging']
     if param := paging.get('nextParams'):
-        return param['after'].replace(',', '%2C')
+        return param['after'] # .replace(',', '%2C')
 
     return None
 
 def get_prev_page(json_data):
     paging = json_data['paging']
     if param := paging.get('previousParams'):
-        if prev:= param.get('prev'):
-            return prev.replace(',', '%2C')
+        if prev := param.get('prev'):
+            return prev #.replace(',', '%2C')
 
-        if prev:= param.get('before'):
-            return prev.replace(',', '%2C')
+        if prev := param.get('before'):
+            return prev #.replace(',', '%2C')
 
+        # FAILED TO FIND PREV PAGE?
         breakpoint()
 
     return None
@@ -104,10 +102,10 @@ def run_extr(extr, req, out_data=None, grab_data=True):
 
 
 def write_all_requests(req, initial_req, filename, use_after, skip_exists=False):
-    file_path = Path(filename + '.json')
+    file_path = Path(filename)
 
     if skip_exists:
-        if os.path.exists(filename):
+        if file_path.exists():
             return
 
     extr = make_extractor()
@@ -133,7 +131,7 @@ def write_all_requests(req, initial_req, filename, use_after, skip_exists=False)
             initial = None
 
         if use_after and after:
-            mod_req += f'&after={after}'
+            mod_req += f'?after={after}'
         elif not use_after and prev:
             mod_req += f'?prev={prev}'
 
@@ -179,25 +177,32 @@ def write_all_requests(req, initial_req, filename, use_after, skip_exists=False)
         if count >= 2:
             break
 
-    with open(f'{filename}.json', 'w', encoding='utf-8') as file:
-        # Write the array as JSON
-        json.dump(out_data, file)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(json.dumps(out_data, indent=4), encoding='utf-8')
+
+def debug_api(req):
+    extr = make_extractor()
+    return run_extr(extr, req)
 
 def write_single(req, filename, skip_exists=True):
-    file_path = f'{filename}.json'
-    if skip_exists and os.path.exists(file_path):
+    file_path = Path(f'{filename}')
+    if skip_exists and file_path.exists():
         return False
 
     extr = make_extractor()
     data = run_extr(extr, req)
-    with open(file_path, 'w') as file:
-        # Write the array as JSON
-        json.dump(data, file)
+
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(json.dumps(data, indent=4), encoding='utf-8')
 
     return data
 
 
-def write_multiple(reqs, filename, grab_data):
+def write_multiple(reqs, filename, grab_data, skip_exists=True):
+    file_path = Path(f'{filename}')
+    if skip_exists and file_path.exists():
+        return False
+
     out_data = []
     for req in reqs:
         extr = make_extractor()
@@ -208,11 +213,10 @@ def write_multiple(reqs, filename, grab_data):
             break
         time.sleep(2.0)
 
-    with open(f'{filename}.json', 'w', encoding='utf-8') as file:
-        # Write the array as JSON
-        json.dump(out_data, file)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(json.dumps(out_data, indent=4), encoding='utf-8')
 
-def write_all_lives():
+def write_all_live_posts():
     posts = []
 
     with open(f'json-data/liveTabPosts.json', 'r', encoding='utf-8') as file:
@@ -221,11 +225,11 @@ def write_all_lives():
             posts.append(data['postId'])
 
     posts = [f'/post/v1.0/post-{p}?fieldSet=postV1' for p in posts]
-    # posts = posts[:5]
+    posts = posts[:5]
     # for p in posts:
     #     print(p)
     # ['/post/v1.0/post-0-152103623?fieldSet=postV1', '/post/v1.0/post-4-104688875?fieldSet=postV1']
-    write_multiple(posts, 'json-data/new_all_live_posts', False)
+    write_multiple(posts, 'json-data/all_live_posts.json', False)
 
 def write_all_post_media():
     posts = []
@@ -265,53 +269,66 @@ def write_all_live_comments():
                 print('No chat id?', postId, data['shareUrl'])
                 break
 
-    # posts = posts[:5]
-    # for chatId, data in posts:
-    #     postId = data['postId']
-    #     req = f'/chat/v1.0/chat-{chatId}/artistMessages'
-    #     print(req, postId, data['shareUrl'])
-    #     write_all_requests(req, req, f'json-data/liveChat/{postId}', True, True)
-    #     time.sleep(30)
+    posts = posts[:5]
+    for chatId, data in posts:
+        postId = data['postId']
+        req = f'/chat/v1.0/chat-{chatId}/artistMessages'
+        print(req, postId, data['shareUrl'])
+        write_all_requests(req, req, f'json-data/liveChat/{postId}.json', True, True)
+        time.sleep(5)
 
 def write_all_comments():
     posts = []
     with open(f'json-data/all_live_posts.json', 'r', encoding='utf-8') as file:
         json_data = json.load(file)
         for data in json_data:
-            postId = data['postId']
-            print('downloading', postId)
-            req = f'/comment/v1.0/post-{postId}/comments?fieldSet=postCommentsV1'
-            write_all_requests(req, req, f'json-data/allComments/{postId}', True, True)
+            post_id = data['postId']
+            print('downloading', post_id)
+            req = f'/comment/v1.0/post-{post_id}/comments?fieldSet=postCommentsV1'
+            write_all_requests(req, req, f'json-data/allComments/{post_id}.json', True, True)
             time.sleep(5)
 
 def gen_json_moments():
     for m, id in members.items():
         req = f'/post/v1.0/member-{id}/posts?fieldSet=postsV1&filterType=MOMENT_VIEWER&limit=1'
-        write_all_requests(req, req, f'json-data/moments/{m}', True)
+        write_all_requests(req, req, f'json-data/moments/{m}.json', True)
 
 def gen_json_official_posts():
     for m in official_channels:
         req = f'/post/v1.0/member-{m}/posts'
-        write_all_requests(req, req, f'json-data/official/{m}', True)
+        write_all_requests(req, req, f'json-data/official/{m}.json', True)
 
 
 def write_all_posts(community_id):
     req = f'/media/v1.0/community-{community_id}/searchAllMedia?fieldSet=postsV1'
-    write_all_requests(req, req, 'json-data/all_posts', True)
+    write_all_requests(req, req, 'json-data/all_posts.json', True)
 
     # req = '/media/v1.0/community-36/searchAllMedia?fieldSet=postsV1'
-    # write_all_requests(req, req, 'json-data/new_searchAllMedia', True)
+    # write_all_requests(req, req, 'json-data/new_searchAllMedia.json', True)
 
 def write_live_tab_posts(community_id):
     req = f'/post/v1.0/community-{community_id}/liveTabPosts'
-    write_all_requests(req, req, 'json-data/liveTabPosts', True)
+    write_all_requests(req, req, 'json-data/liveTabPosts.json', True)
 
-if __name__ == '__main__':
-    COMMUNITY_ID = 36
-    write_all_posts(COMMUNITY_ID)
-    # write_live_tab_posts(COMMUNITY_ID)
-
-# write_all_comments()
+def get_artists(community_id):
+    req = f'/artistpedia/v1.0/community-{community_id}/highlight'
+    print(write_single(req, 'json-data/artists.json', skip_exists=True))
 
 # 'https://global.apis.naver.com/weverse/wevweb/post/v1.0/member-67b4c6fb2220ac6705aa97046f3503a1/posts?after=1699369636979%2C27138103&appId=be4d79eb8fc7bd008ee82c8ec4ff6fd4&fieldSet=postV1&filterType=MOMENT_VIEWER&language=en&limit=1&os=WEB&platform=WEB&wpf=pc&wmsgpad=1735178210447&wmd=Y1OTRioyq7vF2%2FSYTL09CAraDDM%3D'
 # 'https://global.apis.naver.com/weverse/wevweb/member/v1.1/community-36/artistMembers?appId=be4d79eb8fc7bd008ee82c8ec4ff6fd4&fieldSet=artistMembersV1&filterType=MOMENT&language=en&os=WEB&platform=WEB&wpf=pc&wmsgpad=1735178123317&wmd=KHioIqTMvGRFPAxb3jUuMb0WdaE%3D'
+
+if __name__ == '__main__':
+    # print(debug_api("/post/v1.0/community-36/liveTabPosts?after=1729773708000,35506"))
+    # print(debug_api("/post/v1.0/community-36/liveTabPosts?after=1729773708000,35506"))
+
+
+    COMMUNITY_ID = 36
+    # get_artists(COMMUNITY_ID)
+    # write_all_posts(COMMUNITY_ID)
+    # write_live_tab_posts(COMMUNITY_ID)
+
+    # write_all_live_posts()
+
+    write_all_live_comments()
+
+# write_all_comments()
