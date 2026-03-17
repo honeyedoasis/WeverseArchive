@@ -533,7 +533,7 @@ def download():
     process_members()
     process_lives(COMMUNITY_ID)
     process_artist_posts(COMMUNITY_ID)
-    process_dms()
+    # process_dms()
 
 
 if __name__ == '__main__':
