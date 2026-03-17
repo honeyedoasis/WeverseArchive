@@ -417,13 +417,17 @@ def process_lives(community_id):
             download_live_vod(v)
 
 
-def process_member(member_id):
+def process_member(member_json):
     """
     Don't need to grab posts here as they all should be parsed when calling `process_artist_posts`
     """
+
+    member_id = member_json['memberId']
+    member_name = member_json['artistOfficialProfile']['officialName']
+
     # profile
     req = f'/member/v1.0/member-{member_id}?fields=memberId%2CcommunityId%2Cjoined%2CprofileType%2CprofileName%2CprofileImageUrl%2CprofileCoverImageUrl%2CprofileComment%2CmyProfile%2Chidden%2Cblinded%2CmemberJoinStatus%2CfirstJoinAt%2CfollowCount%2Cfollowed%2ChasMembership%2ChasOfficialMark%2CartistOfficialProfile%2CavailableActions%2CprofileSpaceStatus%2Cbadges%2CshareUrl'
-    profile_data = write_single(req, f'{JSON_FOLDER}/artist/{member_id}/profile.json', True)
+    profile_data = write_single(req, f'{JSON_FOLDER}/member/{member_name}/profile.json', True)
 
     if DOWNLOAD_PROFILE_PICTURES:
         pics = [
@@ -433,19 +437,19 @@ def process_member(member_id):
         ]
 
         for (pic_url, name) in pics:
-            utils.download_file(pic_url, f'{MEDIA_FOLDER}/artist/{member_id}/profile/{name}')
+            utils.download_file(pic_url, f'{MEDIA_FOLDER}/member/{member_name}/profile/{name}')
 
     if WRITE_ARTIST_COMMENTS:
         # comments
-        print('Downloading Member Comments: ', member_id)
+        print('Downloading Member Comments: ', member_name)
         req = f'/comment/v1.0/member-{member_id}/comments?fieldSet=memberCommentsV1'
-        write_paged_requests(req, req, f'{JSON_FOLDER}/artist/{member_id}/comments.json', True)
+        write_paged_requests(req, req, f'{JSON_FOLDER}/member/{member_name}/comments.json', True)
 
     # moments
     if DOWNLOAD_MOMENTS_JSON:
-        print('Downloading Member Moments: ', member_id)
+        print('Downloading Member Moments: ', member_name)
         req = f'/post/v1.0/member-{member_id}/posts?fieldSet=postsV1&filterType=MOMENT_VIEWER&limit=1'
-        moments = write_paged_requests(req, req, f'{JSON_FOLDER}/artist/{member_id}/moments.json', True)
+        moments = write_paged_requests(req, req, f'{JSON_FOLDER}/member/{member_name}/moments.json', True)
 
         if DOWNLOAD_MOMENTS_MEDIA:
             for m in moments:
@@ -453,24 +457,24 @@ def process_member(member_id):
                 date = utils.timestamp(m['publishedAt'])
 
                 if momentW1 := m['extension'].get('momentW1'):
-                    print('momentW1', m['summary']['videoCount'], m['summary']['photoCount'])
-                    print(momentW1)
+                    # print('momentW1', m['summary']['videoCount'], m['summary']['photoCount'])
+                    # print(momentW1)
                     if photo := momentW1.get('photo'):
                         image_url = photo['url']
-                        utils.download_file(image_url, f'{MEDIA_FOLDER}/artist/{member_id}/moments/{moment_id}', date)
+                        utils.download_file(image_url, f'{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
                 else:
                     video_id = m['extension']['moment']['video']['videoId']
-                    download_cvideo_json(video_id, f'{MEDIA_FOLDER}/artist/{member_id}/moments/{moment_id}', date)
+                    download_cvideo_json(video_id, f'{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
 
                     image_url = m['extension']['moment']['video']['uploadInfo']['imageUrl']
-                    utils.download_file(image_url, f'{MEDIA_FOLDER}/artist/{member_id}/moments/{moment_id}', date)
+                    utils.download_file(image_url, f'{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
 
 
 def process_members():
     artists = get_artists(COMMUNITY_ID)
     for a in artists:
-        member_id = a['memberId']
-        process_member(member_id)
+        process_member(a)
+        return
 
 
 def process_official_accounts():
