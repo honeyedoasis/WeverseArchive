@@ -11,7 +11,14 @@ from yt_dlp.utils import ExtractorError
 
 import utils
 
+COMMUNITY_NAME = 'fromis9'
 COMMUNITY_ID = 36
+
+ydl_params = {
+    # 'verbose': True,
+    'quiet': True,
+    'cookiesfrombrowser': ('firefox',),
+}
 
 MEDIA_FOLDER = 'media'
 JSON_FOLDER = 'json-data'
@@ -34,29 +41,17 @@ DOWNLOAD_LIVE_VODS = False  # this one will take forever to process
 DOWNLOAD_POST_MEDIA = True # this doesn't work for videos atm
 DOWNLOAD_PROFILE_PICTURES = True
 
-# members = {
-#     'jiheon': '5fb309bc7489a576484431ba8338807e',  # jh
-#     'hayoung': '67b4c6fb2220ac6705aa97046f3503a1',  # hy
-#     'chaeyoung': '65eff6ab044ae8dea6816794f11a6fc1',  # cy
-#     'jiwon': '6599dbbcaa26237c2ab0f3becb421b45',  # jw
-#     'jisun': '01435f74a49ba8a519705ad242348232',  # js
-#     'saerom': '326c0d1e7045798aa3964e2028c34628',  # sr
-#     'seoyeon': '56bdfafb606d9ce1b4ecdd572595e242',  # sy
-#     'nagyung': '5477d46be848bd40252f9d13ef62cb4d',  # ng
-#     'gyuri': 'db56036fc59a94a9ef617261c90c783f'  # gr
+# # What was this for?
+# rooms = {
+#     'jiheon': '414361',  # jh
+#     'hayoung': '297243',  # hy
+#     'chaeyoung': '329164',  # cy
+#     'jiwon': '464268',  # jw
+#     'jisun': '221087',  # js
+#     'saerom': '321529',  # sr
+#     'seoyeon': '229217',  # sy
+#     'nagyung': '233441',  # ng
 # }
-
-# What is this for?
-rooms = {
-    'jiheon': '414361',  # jh
-    'hayoung': '297243',  # hy
-    'chaeyoung': '329164',  # cy
-    'jiwon': '464268',  # jw
-    'jisun': '221087',  # js
-    'saerom': '321529',  # sr
-    'seoyeon': '229217',  # sy
-    'nagyung': '233441',  # ng
-}
 
 """
 Get this by finding the profile of the official channel
@@ -64,15 +59,9 @@ Example: https://weverse.io/fromis9/profile/58afde0dbc1fccd94cd44eff91fa3673
 """
 official_channels = [
     # '47b84d66038c899cfc87e38df8b92143', # fromis_9
-    '58afde0dbc1fccd94cd44eff91fa3673'  # floverse_9
+    # '58afde0dbc1fccd94cd44eff91fa3673'  # floverse_9
     # '4e3e72a5b2ea6ad2c3ac319a4dbc26d0', # Weverse
 ]
-
-ydl_params = {
-    # 'verbose': True,
-    'quiet': True,
-    'cookiesfrombrowser': ('firefox',),
-}
 
 ext = None
 
@@ -232,6 +221,7 @@ def write_paged_requests(req, initial_req, filename, use_after, skip_exists=Fals
     if state_path.exists():
         state_path.unlink()
     print(f"Finished {filename}")
+    return out_data
 
 
 def call_request(req):
@@ -459,10 +449,21 @@ def process_member(member_id):
 
         if DOWNLOAD_MOMENTS_MEDIA:
             for m in moments:
-                video_id = m['extension']['moment']['video']['videoId']
                 moment_id = m['postId']
                 date = utils.timestamp(m['publishedAt'])
-                download_cvideo_json(video_id, f'{MEDIA_FOLDER}/artist/{member_id}/moments/{moment_id}', date)
+
+                if momentW1 := m['extension'].get('momentW1'):
+                    print('momentW1', m['summary']['videoCount'], m['summary']['photoCount'])
+                    print(momentW1)
+                    if photo := momentW1.get('photo'):
+                        image_url = photo['url']
+                        utils.download_file(image_url, f'{MEDIA_FOLDER}/artist/{member_id}/moments/{moment_id}', date)
+                else:
+                    video_id = m['extension']['moment']['video']['videoId']
+                    download_cvideo_json(video_id, f'{MEDIA_FOLDER}/artist/{member_id}/moments/{moment_id}', date)
+
+                    image_url = m['extension']['moment']['video']['uploadInfo']['imageUrl']
+                    utils.download_file(image_url, f'{MEDIA_FOLDER}/artist/{member_id}/moments/{moment_id}', date)
 
 
 def process_members():
@@ -473,6 +474,9 @@ def process_members():
 
 
 def process_official_accounts():
+    if len(official_channels) == 0:
+        print('No official accounts set, fill in the `official_channels` list')
+
     for id in official_channels:
         req = f'/post/v1.0/member-{id}/posts'
         write_paged_requests(req, req, f'{JSON_FOLDER}/official/{id}.json', True)
@@ -529,20 +533,22 @@ def process_dms():
         write_paged_requests(req, req, f'{JSON_FOLDER}/dm/{room_id}.json', False)
 
 
+def set_community_id(community_name):
+    resp = call_request(f'/community/v1.0/communityIdUrlPathByUrlPathArtistCode?keyword={community_name}')
+    print(resp)
+
+    global COMMUNITY_ID
+    COMMUNITY_ID = resp['communityId']
+
 def download():
+    set_community_id(COMMUNITY_NAME)
     process_members()
     process_lives(COMMUNITY_ID)
     process_artist_posts(COMMUNITY_ID)
+    process_official_accounts()
+
     # process_dms()
 
 
 if __name__ == '__main__':
     download()
-    # print(download_cvideo_json('1-491837', 'test_vid'))
-    # print(download_cvideo_json('4-960370', 'test_vid'))
-    # 'https://weverse-rmcnmv.pstatic.net/c/download/v2/VOD_ALPHA/weverse-star-avideo/4F9EEE001779B0B5BCA8AF0B0A54E93640A0/pd/1735639118424/d076d77b-c75d-11ef-8176-a0369ffdf04c.mp4?_lsu_sa_=6da594f5c12f6c063ad085d869f585b88e963b985b002f2739973fc347903d85f42f4acd6b157a02e0bf3932da375b1a1f9a7681ba119bb94c2f5a34bd4267207d88aacaf7547b6a30fdddd650586350'
-    # call_request('')
-
-    # req = f'/video/v2.1/vod/4F9EEE001779B0B5BCA8AF0B0A54E93640A0/playInfo?version=v2'
-    # print(call_request(req))
-    # data = write_single(req, 'raw/test', False)

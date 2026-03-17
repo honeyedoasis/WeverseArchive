@@ -10,7 +10,7 @@ import requests
 
 def edit_creation_date(file_path, new_date: datetime):
     # print('Set ', full_path, ' to ', file_date)
-    print('Edit creation date ', new_date)
+    # print('Edit creation date ', new_date)
     file = filedate.File(file_path)
     file.created = new_date
     file.modified = new_date
