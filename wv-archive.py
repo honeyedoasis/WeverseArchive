@@ -37,9 +37,10 @@ WRITE_ARTIST_COMMENTS = False
 
 DOWNLOAD_MOMENTS_JSON = True
 DOWNLOAD_MOMENTS_MEDIA = True
-DOWNLOAD_LIVE_VODS = False  # this one will take forever to process
+DOWNLOAD_LIVE_VODS = True  # this one will take forever to process
 DOWNLOAD_POST_MEDIA = True # this doesn't work for videos atm
 DOWNLOAD_PROFILE_PICTURES = True
+DOWNLOAD_OFFICIAL_MEDIA = False # The media in this tab https://weverse.io/fromis9/media?tab=all
 
 PAGED_SLEEP = 10
 SHORT_SLEEP = 0.5
@@ -261,7 +262,7 @@ def write_individual_posts(post_file, folder, write_comments=False):
     out_data = []
     for post_id in posts:
         req = f'/post/v1.0/post-{post_id}?fieldSet=postV1'
-        data = write_single(req, f'{JSON_FOLDER}/{folder}/{post_id}.json', True)
+        data = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/{folder}/{post_id}.json', True)
         # print(data)
 
         out_data.append(data)
@@ -269,7 +270,7 @@ def write_individual_posts(post_file, folder, write_comments=False):
         if write_comments:
             print(f'Writing post comments {post_id}')
             req = f'/comment/v1.0/post-{post_id}/comments?fieldSet=postCommentsV1'
-            write_paged_requests(req, req, f'{JSON_FOLDER}/{folder}/{post_id}.comments.json', True, True)
+            write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/{folder}/{post_id}.comments.json', True, True)
 
     return out_data
 
@@ -286,7 +287,7 @@ def download_live_vod(data):
 
     vod_data = get_vod_video_json(video_id)
     url = get_vod_url(vod_data)
-    filepath = f'{MEDIA_FOLDER}/vod/{post_id}'
+    filepath = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/vod/{post_id}'
     print('Downloading vod ', post_id)
     utils.download_file(url, filepath, date)
 
@@ -294,7 +295,7 @@ def download_live_vod(data):
 def write_live_chat():
     posts = []
 
-    with open(f'{JSON_FOLDER}/all_live_posts.json', 'r', encoding='utf-8') as file:
+    with open(f'{COMMUNITY_NAME}/{JSON_FOLDER}/all_live_posts.json', 'r', encoding='utf-8') as file:
         json_data = json.load(file)
         for data in json_data:
             postId = data['postId']
@@ -311,13 +312,13 @@ def write_live_chat():
         postId = data['postId']
         req = f'/chat/v1.0/chat-{chatId}/artistMessages'
         # print(req, postId, data['shareUrl'])
-        write_paged_requests(req, req, f'{JSON_FOLDER}/liveChat/{postId}.json', True, True)
+        write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/liveChat/{postId}.json', True, True)
         time.sleep(5)
 
 
 def write_media(community_id):
     req = f'/media/v1.0/community-{community_id}/searchAllMedia?fieldSet=postsV1'
-    write_paged_requests(req, req, MEDIA_JSON, True)
+    return write_paged_requests(req, req, MEDIA_JSON, True)
 
 
 def get_vod_video_json(video_id):
@@ -395,7 +396,7 @@ def write_live_tab_posts(community_id):
 
 def get_artists(community_id):
     req = f'/artistpedia/v1.0/community-{community_id}/highlight'
-    if data := write_single(req, f'{JSON_FOLDER}/artistProfiles.json', skip_exists=True):
+    if data := write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/artistProfiles.json', skip_exists=True):
         return data['artistProfiles']
 
     print('Error failed to get artists')
@@ -409,7 +410,10 @@ def process_media(community_id):
     """
     Process the media https://weverse.io/fromis9/media?tab=all
     """
-    write_media(community_id)
+    posts = write_media(community_id)
+    for p in posts:
+        post_id = p['postId']
+        print(p)
 
 
 def process_lives(community_id):
@@ -434,7 +438,7 @@ def process_member(member_json):
 
     # profile
     req = f'/member/v1.0/member-{member_id}?fields=memberId%2CcommunityId%2Cjoined%2CprofileType%2CprofileName%2CprofileImageUrl%2CprofileCoverImageUrl%2CprofileComment%2CmyProfile%2Chidden%2Cblinded%2CmemberJoinStatus%2CfirstJoinAt%2CfollowCount%2Cfollowed%2ChasMembership%2ChasOfficialMark%2CartistOfficialProfile%2CavailableActions%2CprofileSpaceStatus%2Cbadges%2CshareUrl'
-    profile_data = write_single(req, f'{JSON_FOLDER}/member/{member_name}/profile.json', True)
+    profile_data = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/member/{member_name}/profile.json', True)
 
     if DOWNLOAD_PROFILE_PICTURES:
         pics = [
@@ -445,19 +449,19 @@ def process_member(member_json):
 
         for (pic_url, name) in pics:
             if pic_url:
-                utils.download_file(pic_url, f'{MEDIA_FOLDER}/member/{member_name}/profile/{name}')
+                utils.download_file(pic_url, f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/profile/{name}')
 
     if WRITE_ARTIST_COMMENTS:
         # comments
         print('Downloading Member Comments: ', member_name)
         req = f'/comment/v1.0/member-{member_id}/comments?fieldSet=memberCommentsV1'
-        write_paged_requests(req, req, f'{JSON_FOLDER}/member/{member_name}/comments.json', True)
+        write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/member/{member_name}/comments.json', True)
 
     # moments
     if DOWNLOAD_MOMENTS_JSON:
         print('Downloading Member Moments: ', member_name)
         req = f'/post/v1.0/member-{member_id}/posts?fieldSet=postsV1&filterType=MOMENT_VIEWER&limit=1'
-        moments = write_paged_requests(req, req, f'{JSON_FOLDER}/member/{member_name}/moments.json', True)
+        moments = write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/member/{member_name}/moments.json', True)
 
         if DOWNLOAD_MOMENTS_MEDIA:
             for m in moments:
@@ -469,13 +473,13 @@ def process_member(member_json):
                     # print(momentW1)
                     if photo := momentW1.get('photo'):
                         image_url = photo['url']
-                        utils.download_file(image_url, f'{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
+                        utils.download_file(image_url, f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
                 else:
                     video_id = m['extension']['moment']['video']['videoId']
-                    download_cvideo_json(video_id, f'{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
+                    download_cvideo_json(video_id, f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
 
                     image_url = m['extension']['moment']['video']['uploadInfo']['imageUrl']
-                    utils.download_file(image_url, f'{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
+                    utils.download_file(image_url, f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
 
 
 def process_members():
@@ -490,7 +494,7 @@ def process_official_accounts():
 
     for id in official_channels:
         req = f'/post/v1.0/member-{id}/posts'
-        write_paged_requests(req, req, f'{JSON_FOLDER}/official/{id}.json', True)
+        write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/official/{id}.json', True)
 
 
 def process_artist_posts(community_id):
@@ -514,21 +518,21 @@ def process_artist_posts(community_id):
                 for photo_id, content in photos.items():
                     photo_url = content['url']
 
-                    path = f'{MEDIA_FOLDER}/artistPosts/{author}/{post_id}_{photo_id}'
+                    path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/artistPosts/{author}/{post_id}_{photo_id}'
                     # print('Downloading photo', path, photo_url)
                     if utils.download_file(photo_url, path, date):
                         time.sleep(1)
 
             if videos := p['attachment'].get('video'):
                 for video_id, content in videos.items():
-                    path = f'{MEDIA_FOLDER}/artistPosts/{author}/{post_id}_{video_id}'
+                    path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/artistPosts/{author}/{post_id}_{video_id}'
                     download_cvideo_json(video_id, path, date)
 
 
 def process_dms():
     # TODO this doesn't work
     req = '/dm/v2.0/my/rooms'
-    all_rooms = write_single(req, f'{JSON_FOLDER}/dm/rooms.json', True)
+    all_rooms = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/dm/rooms.json', True)
     # print(room_json)
 
     for room in all_rooms['rooms']:
@@ -537,24 +541,35 @@ def process_dms():
 
         # '/dm/v2.0/messages?appId=be4d79eb8fc7bd008ee82c8ec4ff6fd4&language=en&os=WEB&platform=WEB&prev=9223372036854775807&roomId=WR3OBRZ&transLang=en&wpf=pc&wmd=PifF4TXK5row%2BIkZIcZHUuGxGck%3D&wmsgpad=1773715693733'
         req = f'/dm/v2.0/messages?roomId={room_id}'
-        write_paged_requests(req, req, f'{JSON_FOLDER}/dm/{room_id}.json', False)
+        write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/dm/{room_id}.json', False)
 
 
 def set_community_id(community_name):
-    resp = call_request(f'/community/v1.0/communityIdUrlPathByUrlPathArtistCode?keyword={community_name}')
-    print(resp)
-
     global COMMUNITY_ID
-    COMMUNITY_ID = resp['communityId']
+    global COMMUNITY_NAME
 
-def download():
-    set_community_id(COMMUNITY_NAME)
+    req = f'/community/v1.0/communityIdUrlPathByUrlPathArtistCode?keyword={community_name}'
+    resp = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/communityId.json')
+
+    COMMUNITY_ID = resp['communityId']
+    COMMUNITY_NAME = community_name
+
+    return resp
+
+def download_community(community_name):
+    set_community_id(community_name)
+
     process_members()
     process_lives(COMMUNITY_ID)
     process_artist_posts(COMMUNITY_ID)
-    process_official_accounts()
+    # process_media(COMMUNITY_ID)
 
-    # process_dms()
+    process_official_accounts()
+    process_dms()
+
+
+def download():
+    download_community('fromis9')
 
 
 if __name__ == '__main__':
