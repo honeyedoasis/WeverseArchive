@@ -23,12 +23,7 @@ ydl_params = {
 MEDIA_FOLDER = 'media'
 JSON_FOLDER = 'json-data'
 
-MEDIA_JSON = f'{JSON_FOLDER}/searchAllMedia.json'
-
-LIVE_POSTS_JSON = f'{JSON_FOLDER}/liveTabPosts.json'
 LIVE_POSTS_FOLDER = 'liveTabPosts'
-
-ARTIST_POSTS_JSON = f'{JSON_FOLDER}/artistTabPosts.json'
 ARTIST_POSTS_FOLDER = 'artistTabPosts'
 
 WRITE_POST_COMMENTS = False
@@ -44,6 +39,16 @@ DOWNLOAD_OFFICIAL_MEDIA = False # The media in this tab https://weverse.io/fromi
 
 PAGED_SLEEP = 10
 SHORT_SLEEP = 0.5
+
+def get_media_json_path():
+    return f'{COMMUNITY_NAME}/{JSON_FOLDER}/searchAllMedia.json'
+
+def get_live_json_path():
+    return f'{COMMUNITY_NAME}/{JSON_FOLDER}/liveTabPosts.json'
+
+def get_artist_json_path():
+    return f'{COMMUNITY_NAME}/{JSON_FOLDER}/artistTabPosts.json'
+
 
 # # What was this for?
 # rooms = {
@@ -275,7 +280,7 @@ def write_individual_posts(post_file, folder, write_comments=False):
     return out_data
 
 
-def download_live_vod(data):
+def download_extension_video(data, filepath):
     # TODO maybe just use yt-dlp?
     video_id = data['extension']['video']['videoId']
     post_id = data['postId']
@@ -283,12 +288,12 @@ def download_live_vod(data):
 
     if data['membershipOnly']:
         print('Skip downloading membership video ', video_id)
+        print(data)
         return
 
     vod_data = get_vod_video_json(video_id)
     url = get_vod_url(vod_data)
-    filepath = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/vod/{post_id}'
-    print('Downloading vod ', post_id)
+    print('Downloading video ', post_id, filepath)
     utils.download_file(url, filepath, date)
 
 
@@ -316,9 +321,9 @@ def write_live_chat():
         time.sleep(5)
 
 
-def write_media(community_id):
+def write_official_media(community_id):
     req = f'/media/v1.0/community-{community_id}/searchAllMedia?fieldSet=postsV1'
-    return write_paged_requests(req, req, MEDIA_JSON, True)
+    return write_paged_requests(req, req, get_media_json_path(), True)
 
 
 def get_vod_video_json(video_id):
@@ -364,7 +369,7 @@ def download_cvideo_json(video_id, path, date=None):
 
 def write_live_tab_posts(community_id):
     req = f'/post/v1.0/community-{community_id}/liveTabPosts'
-    write_paged_requests(req, req, LIVE_POSTS_JSON, True)
+    write_paged_requests(req, req, get_live_json_path(), True)
 
     # if True:
     # print('Bla')
@@ -406,14 +411,31 @@ def get_artists(community_id):
 # 'https://global.apis.naver.com/weverse/wevweb/post/v1.0/member-67b4c6fb2220ac6705aa97046f3503a1/posts?after=1699369636979%2C27138103&appId=be4d79eb8fc7bd008ee82c8ec4ff6fd4&fieldSet=postV1&filterType=MOMENT_VIEWER&language=en&limit=1&os=WEB&platform=WEB&wpf=pc&wmsgpad=1735178210447&wmd=Y1OTRioyq7vF2%2FSYTL09CAraDDM%3D'
 # 'https://global.apis.naver.com/weverse/wevweb/member/v1.1/community-36/artistMembers?appId=be4d79eb8fc7bd008ee82c8ec4ff6fd4&fieldSet=artistMembersV1&filterType=MOMENT&language=en&os=WEB&platform=WEB&wpf=pc&wmsgpad=1735178123317&wmd=KHioIqTMvGRFPAxb3jUuMb0WdaE%3D'
 
-def process_media(community_id):
+def process_official_media(community_id):
     """
     Process the media https://weverse.io/fromis9/media?tab=all
     """
-    posts = write_media(community_id)
+    posts = write_official_media(community_id)
     for p in posts:
+        # print(p)
+
         post_id = p['postId']
-        print(p)
+        date = utils.timestamp(p['publishedAt'])
+
+        base_path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/officialMedia/{post_id}'
+
+        if video := p['extension'].get('video'):
+            video_id = video['videoId']
+            path = f'{base_path}_{video_id}'
+            download_extension_video(p, path)
+
+        if photos := p['extension'].get('image', {}).get('photos'):
+            print(photos)
+            for photo in photos:
+                url = photo['url']
+                photo_id = photo['photoId']
+                path = f'{base_path}_{photo_id}'
+                utils.download_file(url, path, date)
 
 
 def process_lives(community_id):
@@ -422,10 +444,12 @@ def process_lives(community_id):
     """
     write_live_tab_posts(community_id)
 
-    vods = write_individual_posts(LIVE_POSTS_JSON, LIVE_POSTS_FOLDER, WRITE_LIVE_COMMENTS)
+    live_posts = write_individual_posts(get_live_json_path(), f'{COMMUNITY_NAME}/{LIVE_POSTS_FOLDER}', WRITE_LIVE_COMMENTS)
     if DOWNLOAD_LIVE_VODS:
-        for v in vods:
-            download_live_vod(v)
+        for p in live_posts:
+            post_id = p['postId']
+            path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/lives/{post_id}'
+            download_extension_video(p, path)
 
 
 def process_member(member_json):
@@ -502,8 +526,12 @@ def process_artist_posts(community_id):
     https://weverse.io/fromis9/artist
     """
     req = f'/post/v1.0/community-{community_id}/artistTabPosts'
-    write_paged_requests(req, req, ARTIST_POSTS_JSON, True)
-    posts = write_individual_posts(ARTIST_POSTS_JSON, ARTIST_POSTS_FOLDER, WRITE_POST_COMMENTS)
+
+    json_path = get_artist_json_path()
+
+    write_paged_requests(req, req, json_path, True)
+
+    posts = write_individual_posts(json_path, f'{COMMUNITY_NAME}/{ARTIST_POSTS_FOLDER}', WRITE_POST_COMMENTS)
 
     if DOWNLOAD_POST_MEDIA:
         for p in posts:
@@ -549,7 +577,7 @@ def set_community_id(community_name):
     global COMMUNITY_NAME
 
     req = f'/community/v1.0/communityIdUrlPathByUrlPathArtistCode?keyword={community_name}'
-    resp = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/communityId.json')
+    resp = write_single(req, f'{community_name}/{JSON_FOLDER}/communityId.json')
 
     COMMUNITY_ID = resp['communityId']
     COMMUNITY_NAME = community_name
@@ -562,7 +590,7 @@ def download_community(community_name):
     process_members()
     process_lives(COMMUNITY_ID)
     process_artist_posts(COMMUNITY_ID)
-    # process_media(COMMUNITY_ID)
+    process_official_media(COMMUNITY_ID)
 
     process_official_accounts()
     process_dms()
