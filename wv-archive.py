@@ -2,6 +2,7 @@ import datetime
 import json
 from pathlib import Path
 
+import requests
 import yt_dlp
 import time
 import xmltodict
@@ -110,13 +111,15 @@ def get_prev_page(json_data):
     return None
 
 
-def run_extr(extr, req, out_data=None, grab_data=True):
+def run_extr(extr, req, out_data=None, grab_data=True, post=False):
     print(req)
+    if post:
+        grab_data = False
 
     while True:
         try:
-            json_data = extr._call_api(req, '')
-            print(json_data)
+            post_byte = b'' if post else None
+            json_data = extr._call_api(req, '', data=post_byte)
             break
         except Exception as e:
             print(e)
@@ -233,9 +236,9 @@ def write_paged_requests(req, initial_req, filename, use_after, skip_exists=Fals
     return out_data
 
 
-def call_request(req):
+def call_request(req, post=False):
     extr = make_extractor()
-    resp = run_extr(extr, req)
+    resp = run_extr(extr, req, post=post)
     time.sleep(SHORT_SLEEP)
     return resp
 
@@ -287,8 +290,6 @@ def download_extension_video(data, filepath):
     date = utils.timestamp(data['publishedAt'])
 
     if data['membershipOnly']:
-        print('Skip downloading membership video ', video_id)
-        print(data)
         return
 
     vod_data = get_vod_video_json(video_id)
@@ -425,17 +426,53 @@ def process_official_media(community_id):
         base_path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/officialMedia/{post_id}'
 
         if video := p['extension'].get('video'):
-            video_id = video['videoId']
-            path = f'{base_path}_{video_id}'
-            download_extension_video(p, path)
+            if not p['membershipOnly']:
+                video_id = video['videoId']
+                path = f'{base_path}_{video_id}'
+                download_extension_video(p, path)
+            else:
+                # download_membership_video(video)
+                continue
 
-        if photos := p['extension'].get('image', {}).get('photos'):
-            print(photos)
-            for photo in photos:
-                url = photo['url']
-                photo_id = photo['photoId']
-                path = f'{base_path}_{photo_id}'
-                utils.download_file(url, path, date)
+        # if photos := p['extension'].get('image', {}).get('photos'):
+        #     for photo in photos:
+        #         url = photo['url']
+        #         photo_id = photo['photoId']
+        #         path = f'{base_path}_{photo_id}'
+        #         utils.download_file(url, path, date)
+
+def download_membership_video(video):
+    # TODO download with 'https://github.com/devine-dl/pywidevine'
+    video_id = video['videoId']
+    in_key_json = call_request(f'/video/v1.2/vod/{video_id}/inKey?drm=PlayReady&securityLevelByTrack=true', post=True)
+    print(in_key_json)
+
+    key = in_key_json['inKey']
+
+    infra_video_id = video['infraVideoId']
+    api_call = f'https://apis.naver.com/neonplayer/vodplay/v3/playback/{infra_video_id}?key={key}&drm=Widevine'
+
+    # Headers converted from the curl -H flags
+    headers = {
+        'accept': 'application/xml',
+        'accept-language': 'en-AU,en;q=0.9',
+        'cache-control': 'no-cache',
+        'origin': 'https://weverse.io',
+        'pragma': 'no-cache',
+        'priority': 'u=1, i',
+        'referer': 'https://weverse.io/',
+        'sec-ch-ua': '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'cross-site',
+        'sec-fetch-storage-access': 'active',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+    }
+
+    response = requests.get(api_call, headers=headers)
+    xml_data = xmltodict.parse(response.text)
 
 
 def process_lives(community_id):
