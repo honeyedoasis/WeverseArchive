@@ -271,7 +271,7 @@ def download_live_vod(data):
     # TODO maybe just use yt-dlp?
     video_id = data['extension']['video']['videoId']
     post_id = data['postId']
-    date = data['publishedAt']
+    date = utils.timestamp(data['publishedAt'])
 
     if data['membershipOnly']:
         print('Skip downloading membership video ', video_id)
@@ -431,13 +431,14 @@ def process_member(member_json):
 
     if DOWNLOAD_PROFILE_PICTURES:
         pics = [
-            (profile_data['profileImageUrl'], 'profileImage'),
-            (profile_data['profileCoverImageUrl'], 'profileCover'),
-            (profile_data['artistOfficialProfile']['officialImageUrl'], 'profileOfficial'),
+            (profile_data.get('profileImageUrl'), 'profileImage'),
+            (profile_data.get('profileCoverImageUrl'), 'profileCover'),
+            (profile_data.get('artistOfficialProfile', {}).get('officialImageUrl'), 'profileOfficial'),
         ]
 
         for (pic_url, name) in pics:
-            utils.download_file(pic_url, f'{MEDIA_FOLDER}/member/{member_name}/profile/{name}')
+            if pic_url:
+                utils.download_file(pic_url, f'{MEDIA_FOLDER}/member/{member_name}/profile/{name}')
 
     if WRITE_ARTIST_COMMENTS:
         # comments

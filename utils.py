@@ -9,8 +9,10 @@ import requests
 
 
 def edit_creation_date(file_path, new_date: datetime):
-    # print('Set ', full_path, ' to ', file_date)
-    # print('Edit creation date ', new_date)
+    if new_date is None:
+        return
+        # print('Edit creation date ', new_date)
+
     file = filedate.File(file_path)
     file.created = new_date
     file.modified = new_date
@@ -47,8 +49,6 @@ def edit_creation_date(file_path, new_date: datetime):
 
 def download_file(file_url, file_path, date=None, skip_exists=True, timeout=30):
     file_path = Path(file_path)
-    if skip_exists and file_path.exists():
-        return False
 
     existing_files = list(file_path.parent.glob(f"{file_path.name}.*"))
     if existing_files:
@@ -70,18 +70,20 @@ def download_file(file_url, file_path, date=None, skip_exists=True, timeout=30):
             if not extension:
                 extension = ".bin"
 
-            file_path = f'{file_path}{extension}'
+            final_path = f'{file_path}{extension}'
+            if skip_exists and Path(final_path).exists():
+                return False
 
-            print(f"Download: {file_path} Date: {date} URL: {file_url}")
+            print(f"Download: {final_path} Date: {date} URL: {file_url}")
 
                 # Check if the request was successful
             if response.status_code == 200:
                 # Open a file in binary write mode to save the image
-                with open(file_path, "wb") as file:
+                with open(final_path, "wb") as file:
                     file.write(response.content)
 
                     if date:
-                        edit_creation_date(file_path, date)
+                        edit_creation_date(final_path, date)
                     # print("Downloaded successfully!")
                 return True  # Exit the loop if download is successful
             else:
