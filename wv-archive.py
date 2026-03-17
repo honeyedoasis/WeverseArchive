@@ -41,6 +41,9 @@ DOWNLOAD_LIVE_VODS = False  # this one will take forever to process
 DOWNLOAD_POST_MEDIA = True # this doesn't work for videos atm
 DOWNLOAD_PROFILE_PICTURES = True
 
+PAGED_SLEEP = 10
+SHORT_SLEEP = 0.5
+
 # # What was this for?
 # rooms = {
 #     'jiheon': '414361',  # jh
@@ -214,7 +217,7 @@ def write_paged_requests(req, initial_req, filename, use_after, skip_exists=Fals
             break
 
         print(f"Waiting... Next cursor: {current_cursor}")
-        time.sleep(5)
+        time.sleep(PAGED_SLEEP)
 
     # Clean up state file if finished
     state_path = Path(f"{filename}.state")
@@ -226,7 +229,9 @@ def write_paged_requests(req, initial_req, filename, use_after, skip_exists=Fals
 
 def call_request(req):
     extr = make_extractor()
-    return run_extr(extr, req)
+    resp = run_extr(extr, req)
+    time.sleep(SHORT_SLEEP)
+    return resp
 
 
 def write_single(req, filename, skip_exists=True):
@@ -239,6 +244,8 @@ def write_single(req, filename, skip_exists=True):
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(json.dumps(data, indent=4), encoding='utf-8')
+
+    time.sleep(SHORT_SLEEP)
 
     return data
 
