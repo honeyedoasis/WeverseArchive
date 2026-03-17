@@ -30,7 +30,9 @@ WRITE_ARTIST_COMMENTS = False
 
 DOWNLOAD_MOMENTS_JSON = True
 DOWNLOAD_MOMENTS_MEDIA = True
-DOWNLOAD_LIVE_VODS = False # this one will take forever to process
+DOWNLOAD_LIVE_VODS = False  # this one will take forever to process
+DOWNLOAD_POST_MEDIA = True # this doesn't work for videos atm
+DOWNLOAD_PROFILE_PICTURES = True
 
 # members = {
 #     'jiheon': '5fb309bc7489a576484431ba8338807e',  # jh
@@ -259,18 +261,21 @@ def write_individual_posts(post_file, folder, write_comments=False):
         for data in json_data:
             posts.append(data['postId'])
 
+    out_data = []
     for post_id in posts:
         req = f'/post/v1.0/post-{post_id}?fieldSet=postV1'
         data = write_single(req, f'{JSON_FOLDER}/{folder}/{post_id}.json', True)
-        print(data)
+        # print(data)
+
+        out_data.append(data)
 
         if write_comments:
             print(f'Writing post comments {post_id}')
             req = f'/comment/v1.0/post-{post_id}/comments?fieldSet=postCommentsV1'
             write_paged_requests(req, req, f'{JSON_FOLDER}/{folder}/{post_id}.comments.json', True, True)
 
-        if DOWNLOAD_LIVE_VODS:
-            download_live_vod(data)
+    return out_data
+
 
 def download_live_vod(data):
     # TODO maybe just use yt-dlp?
@@ -286,7 +291,7 @@ def download_live_vod(data):
     url = get_vod_url(vod_data)
     filepath = f'{MEDIA_FOLDER}/vod/{post_id}'
     print('Downloading vod ', post_id)
-    # utils.download_file(url, filepath, date)
+    utils.download_file(url, filepath, date)
 
 
 def write_live_chat():
@@ -414,8 +419,12 @@ def process_lives(community_id):
     """
     Process the lives https://weverse.io/fromis9/live
     """
-    # write_live_tab_posts(community_id)
-    write_individual_posts(LIVE_POSTS_JSON, LIVE_POSTS_FOLDER, WRITE_LIVE_COMMENTS)
+    write_live_tab_posts(community_id)
+
+    vods = write_individual_posts(LIVE_POSTS_JSON, LIVE_POSTS_FOLDER, WRITE_LIVE_COMMENTS)
+    if DOWNLOAD_LIVE_VODS:
+        for v in vods:
+            download_live_vod(v)
 
 
 def process_member(member_id):
@@ -424,7 +433,17 @@ def process_member(member_id):
     """
     # profile
     req = f'/member/v1.0/member-{member_id}?fields=memberId%2CcommunityId%2Cjoined%2CprofileType%2CprofileName%2CprofileImageUrl%2CprofileCoverImageUrl%2CprofileComment%2CmyProfile%2Chidden%2Cblinded%2CmemberJoinStatus%2CfirstJoinAt%2CfollowCount%2Cfollowed%2ChasMembership%2ChasOfficialMark%2CartistOfficialProfile%2CavailableActions%2CprofileSpaceStatus%2Cbadges%2CshareUrl'
-    write_single(req, f'{JSON_FOLDER}/artist/{member_id}/profile.json', True)
+    profile_data = write_single(req, f'{JSON_FOLDER}/artist/{member_id}/profile.json', True)
+
+    if DOWNLOAD_PROFILE_PICTURES:
+        pics = [
+            (profile_data['profileImageUrl'], 'profileImage'),
+            (profile_data['profileCoverImageUrl'], 'profileCover'),
+            (profile_data['artistOfficialProfile']['officialImageUrl'], 'profileOfficial'),
+        ]
+
+        for (pic_url, name) in pics:
+            utils.download_file(pic_url, f'{MEDIA_FOLDER}/artist/{member_id}/profile/{name}')
 
     if WRITE_ARTIST_COMMENTS:
         # comments
@@ -443,7 +462,7 @@ def process_member(member_id):
                 video_id = m['extension']['moment']['video']['videoId']
                 moment_id = m['postId']
                 date = utils.timestamp(m['publishedAt'])
-                download_cvideo_json(video_id, f'{MEDIA_FOLDER}/{member_id}/moments/{moment_id}', date)
+                download_cvideo_json(video_id, f'{MEDIA_FOLDER}/artist/{member_id}/moments/{moment_id}', date)
 
 
 def process_members():
@@ -465,10 +484,38 @@ def process_artist_posts(community_id):
     """
     req = f'/post/v1.0/community-{community_id}/artistTabPosts'
     write_paged_requests(req, req, ARTIST_POSTS_JSON, True)
-    write_individual_posts(ARTIST_POSTS_JSON, ARTIST_POSTS_FOLDER, WRITE_POST_COMMENTS)
+    posts = write_individual_posts(ARTIST_POSTS_JSON, ARTIST_POSTS_FOLDER, WRITE_POST_COMMENTS)
+
+    if DOWNLOAD_POST_MEDIA:
+        for p in posts:
+            post_id = p['postId']
+            date = utils.timestamp(p['publishedAt'])
+            author = p['author']['memberId']
+
+            # download post images
+            if photos := p['attachment'].get('photo'):
+                for photo_id, content in photos.items():
+                    photo_url = content['url']
+
+                    path = f'{MEDIA_FOLDER}/posts/{author}/{post_id}_{photo_id}'
+                    # print('Downloading photo', path, photo_url)
+                    if utils.download_file(photo_url, path, date):
+                        time.sleep(1)
+                    # print(photo_id, content)
+
+            # TODO figure out how to download videos
+            if False:
+                if videos := p['attachment'].get('video'):
+                    for video_id, content in videos.items():
+                        print(content)
+                        real_id = content['videoId']
+                        thumb = content['imageUrl']  # TODO embed thumbnail?
+                        # 'https://apis.naver.com/neonplayer/vodplay/v3/playback/4F9EEE001779B0B5BCA8AF0B0A54E93640A0?key=V1269907f12a44da44a9116a6fcbe965ba17692f6f5a038a2700af70c7c636a35da7416a6fcbe965ba176&sid=2072&devt=html5_pc&prv=N&lc=en&cpl=en&adi=%5B%7B%22adSystem%22%3A%22null%22%7D%5D&adu=%2F'
+                        'https://weverse-rmcnmv.pstatic.net/c/download/v2/VOD_ALPHA/weverse-star-avideo/4F9EEE001779B0B5BCA8AF0B0A54E93640A0/pd/1735639118424/d076d77b-c75d-11ef-8176-a0369ffdf04c.mp4?_lsu_sa_=6da594f5c12f6c063ad085d869f585b88e963b985b002f2739973fc347903d85f42f4acd6b157a02e0bf3932da375b1a1f9a7681ba119bb94c2f5a34bd4267207d88aacaf7547b6a30fdddd650586350'
 
 
 def process_dms():
+    # TODO this doesn't work
     req = '/dm/v2.0/my/rooms'
     all_rooms = write_single(req, f'{JSON_FOLDER}/dm/rooms.json', True)
     # print(room_json)
@@ -477,19 +524,25 @@ def process_dms():
         room_id = room['roomId']
         print(room)
 
-        # TODO why doesn't this work
         # '/dm/v2.0/messages?appId=be4d79eb8fc7bd008ee82c8ec4ff6fd4&language=en&os=WEB&platform=WEB&prev=9223372036854775807&roomId=WR3OBRZ&transLang=en&wpf=pc&wmd=PifF4TXK5row%2BIkZIcZHUuGxGck%3D&wmsgpad=1773715693733'
         req = f'/dm/v2.0/messages?roomId={room_id}'
         write_paged_requests(req, req, f'{JSON_FOLDER}/dm/{room_id}.json', False)
 
 
 def download():
-    # process_members()
+    process_members()
     process_lives(COMMUNITY_ID)
-    # process_artist_posts(COMMUNITY_ID)
-    # process_dms()
+    process_artist_posts(COMMUNITY_ID)
+    process_dms()
 
 
 if __name__ == '__main__':
     download()
     # print(download_cvideo_json('1-491837', 'test_vid'))
+    # print(download_cvideo_json('4-960370', 'test_vid'))
+    # 'https://weverse-rmcnmv.pstatic.net/c/download/v2/VOD_ALPHA/weverse-star-avideo/4F9EEE001779B0B5BCA8AF0B0A54E93640A0/pd/1735639118424/d076d77b-c75d-11ef-8176-a0369ffdf04c.mp4?_lsu_sa_=6da594f5c12f6c063ad085d869f585b88e963b985b002f2739973fc347903d85f42f4acd6b157a02e0bf3932da375b1a1f9a7681ba119bb94c2f5a34bd4267207d88aacaf7547b6a30fdddd650586350'
+    # call_request('')
+
+    # req = f'/video/v2.1/vod/4F9EEE001779B0B5BCA8AF0B0A54E93640A0/playInfo?version=v2'
+    # print(call_request(req))
+    # data = write_single(req, 'raw/test', False)

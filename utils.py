@@ -45,10 +45,15 @@ def edit_creation_date(file_path, new_date: datetime):
 #
 #     return False
 
-def download_file(file_url, file_path, skip_exists=True, date=None, timeout=30, ext=None):
+def download_file(file_url, file_path, date=None, skip_exists=True, timeout=30):
     file_path = Path(file_path)
     if skip_exists and file_path.exists():
-        return True
+        return False
+
+    existing_files = list(file_path.parent.glob(f"{file_path.name}.*"))
+    if existing_files:
+        # print(f"File already exists: {existing_files[0]}")
+        return False
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -101,7 +106,8 @@ def timestamp(ts):
     ts_seconds = ts / 1000
     return datetime.datetime.fromtimestamp(ts_seconds, tz=ZoneInfo("Asia/Seoul"))
 
-if __name__ == '__main__':
-    url = 'https://phinf.wevpstatic.net/MjAyNDA4MDFfODQg/MDAxNzIyNTE0NDQ3MDQ3.jd8yLmvexdRXlwRBhZBoW5v3XgKgA3ilOhglifEW-0Eg.gdKTGmOlcsShILD35eY6Hbth7Ji9NeCwexY0unn5maog.JPEG/87dfb166-b56a-4167-aecc-d657305e5413.jpeg'
-    download_file(url, 'test.jpeg')
-    pass
+
+# if __name__ == '__main__':
+    # url = 'https://phinf.wevpstatic.net/MjAyNDA4MDFfODQg/MDAxNzIyNTE0NDQ3MDQ3.jd8yLmvexdRXlwRBhZBoW5v3XgKgA3ilOhglifEW-0Eg.gdKTGmOlcsShILD35eY6Hbth7Ji9NeCwexY0unn5maog.JPEG/87dfb166-b56a-4167-aecc-d657305e5413.jpeg'
+    # download_file(url, 'test.jpeg')
+    # pass
