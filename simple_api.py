@@ -8,6 +8,8 @@ import time
 from yt_dlp.extractor.weverse import WeverseIE
 from yt_dlp.utils import ExtractorError
 
+COMMUNITY_ID = 36
+
 MEDIA_JSON = 'json-data/searchAllMedia.json'
 
 LIVE_POSTS_JSON = 'json-data/liveTabPosts.json'
@@ -378,18 +380,29 @@ def process_lives(community_id):
     write_live_tab_posts(community_id)
     write_individual_posts(LIVE_POSTS_JSON, LIVE_POSTS_FOLDER, WRITE_LIVE_COMMENTS)
 
-def process_member(m):
+def process_member(member_id):
     """
     Don't need to grab posts here as they all should be parsed when calling `process_artist_posts`
     """
+    # profile
+    req = f'/member/v1.0/member-{member_id}?fields=memberId%2CcommunityId%2Cjoined%2CprofileType%2CprofileName%2CprofileImageUrl%2CprofileCoverImageUrl%2CprofileComment%2CmyProfile%2Chidden%2Cblinded%2CmemberJoinStatus%2CfirstJoinAt%2CfollowCount%2Cfollowed%2ChasMembership%2ChasOfficialMark%2CartistOfficialProfile%2CavailableActions%2CprofileSpaceStatus%2Cbadges%2CshareUrl'
+    write_single(req, f'json-data/artist/{member_id}/profile.json', True)
 
     # comments
-    req = f'comment/v1.0/member-{m}/comments'
-    write_paged_requests(req, req, f'json-data/artist/{m}/comments.json', True)
+    print('Downloading Member Comments: ', member_id)
+    req = f'/comment/v1.0/member-{member_id}/comments?fieldSet=memberCommentsV1'
+    write_paged_requests(req, req, f'json-data/artist/{member_id}/comments.json', True)
 
     # moments
-    req = f'/post/v1.0/member-{id}/posts?fieldSet=postsV1&filterType=MOMENT_VIEWER&limit=1'
-    write_paged_requests(req, req, f'json-data/artist/{m}/moments.json', True)
+    print('Downloading Member Moments: ', member_id)
+    req = f'/post/v1.0/member-{member_id}/posts?fieldSet=postsV1&filterType=MOMENT_VIEWER&limit=1'
+    write_paged_requests(req, req, f'json-data/artist/{member_id}/moments.json', True)
+
+def process_members():
+    artists = get_artists(COMMUNITY_ID)
+    for a in artists:
+        member_id = a['memberId']
+        process_member(member_id)
 
 def process_official_accounts():
     for id in official_channels:
@@ -404,15 +417,26 @@ def process_artist_posts(community_id):
     write_paged_requests(req, req, ARTIST_POSTS_JSON, True)
     write_individual_posts(ARTIST_POSTS_JSON, ARTIST_POSTS_FOLDER, WRITE_POST_COMMENTS)
 
-def download():
-    COMMUNITY_ID = 36
-    # print(get_artists(COMMUNITY_ID))
-    # process_lives(COMMUNITY_ID)
-    process_artist_posts(COMMUNITY_ID)
+def process_dms():
+    req = '/dm/v2.0/my/rooms'
+    all_rooms = write_single(req, 'json-data/dm/rooms.json', True)
+    # print(room_json)
 
+    for room in all_rooms['rooms']:
+        room_id = room['roomId']
+        print(room)
+
+        # TODO why doesn't this work
+        # '/dm/v2.0/messages?appId=be4d79eb8fc7bd008ee82c8ec4ff6fd4&language=en&os=WEB&platform=WEB&prev=9223372036854775807&roomId=WR3OBRZ&transLang=en&wpf=pc&wmd=PifF4TXK5row%2BIkZIcZHUuGxGck%3D&wmsgpad=1773715693733'
+        req = f'/dm/v2.0/messages?roomId={room_id}'
+        write_paged_requests(req, req, f'json-data/dm/{room_id}.json', False)
+
+
+def download():
+    process_members()
+    process_lives(COMMUNITY_ID)
+    process_artist_posts(COMMUNITY_ID)
+    process_dms()
 
 if __name__ == '__main__':
-    write_individual_posts(ARTIST_POSTS_JSON, ARTIST_POSTS_FOLDER, WRITE_POST_COMMENTS)
-    # download()
-
-# write_all_comments()
+    download()
