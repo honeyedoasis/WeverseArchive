@@ -6,14 +6,13 @@ Currently it mainly archives json data. Limitations on downloading videos in pos
 
 ### Features
 * **Archive Metadata:** Saves JSON data for the Media tab, Live tab, and Artist tab.
-* **Artist Posts:** Archives all posts made by artists and official channels. **Can't download membership videos!**.
+* **Artist Posts:** Archives all posts made by artists and official channels.
 * **Moments:** Downloads artist Moments.
 * **Profile Pictures:** Downloads artist profile pictures.
 * **Post Media:** Downloads images attached to artist posts.
 * **Comments:** Fetches and saves comments for posts and live streams.
 
 ### Not Working
-* Membership Post Videos
 * Weverse DM
 * Membership Live
 
