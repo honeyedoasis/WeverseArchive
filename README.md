@@ -2,7 +2,9 @@
 
 A simple tool to archive posts, media, and metadata from Weverse communities.
 
-### Features (What it can do)
+Currently it mainly archives json data. Limitations on downloading videos in posts.
+
+### Features
 * **Archive Metadata:** Saves JSON data for the Media tab, Live tab, and Artist tab.
 * **Artist Posts:** Archives all posts made by artists and official channels. **Can't download videos!**.
 * **Moments:** Downloads artist Moments.
