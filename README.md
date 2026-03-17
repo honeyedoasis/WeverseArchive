@@ -6,18 +6,16 @@ Currently it mainly archives json data. Limitations on downloading videos in pos
 
 ### Features
 * **Archive Metadata:** Saves JSON data for the Media tab, Live tab, and Artist tab.
-* **Artist Posts:** Archives all posts made by artists and official channels. **Can't download videos!**.
+* **Artist Posts:** Archives all posts made by artists and official channels. **Can't download membership videos!**.
 * **Moments:** Downloads artist Moments.
 * **Profile Pictures:** Downloads artist profile pictures.
 * **Post Media:** Downloads images attached to artist posts.
 * **Comments:** Fetches and saves comments for posts and live streams.
 
 ### Not Working
-* **Artist Post Videos:** Does not currently download videos attached to standard artist posts.
-* **Direct Messages (DMs):** The DM archiving feature is non-functional.
-* **Membership Content:** Skips downloading membership-only videos.
-* **Live VODs:** Downloading full Live replays is disabled by default due to processing time.
-* **Browser Support:** Currently hardcoded to only extract cookies from Firefox.
+* Membership Post Videos
+* Weverse DM
+* Membership Live
 
 ### Requirements
 * Python 3.x

@@ -474,7 +474,6 @@ def process_members():
     artists = get_artists(COMMUNITY_ID)
     for a in artists:
         process_member(a)
-        return
 
 
 def process_official_accounts():
@@ -497,29 +496,35 @@ def process_artist_posts(community_id):
     if DOWNLOAD_POST_MEDIA:
         for p in posts:
             post_id = p['postId']
+
             date = utils.timestamp(p['publishedAt'])
-            author = p['author']['memberId']
+
+            author = p['author']['artistOfficialProfile']['officialName']
 
             # download post images
             if photos := p['attachment'].get('photo'):
                 for photo_id, content in photos.items():
                     photo_url = content['url']
 
-                    path = f'{MEDIA_FOLDER}/posts/{author}/{post_id}_{photo_id}'
+                    path = f'{MEDIA_FOLDER}/artistPosts/{author}/{post_id}_{photo_id}'
                     # print('Downloading photo', path, photo_url)
                     if utils.download_file(photo_url, path, date):
                         time.sleep(1)
-                    # print(photo_id, content)
 
-            # TODO figure out how to download videos
-            if False:
-                if videos := p['attachment'].get('video'):
-                    for video_id, content in videos.items():
-                        print(content)
-                        real_id = content['videoId']
-                        thumb = content['imageUrl']  # TODO embed thumbnail?
+            if videos := p['attachment'].get('video'):
+                for video_id, content in videos.items():
+                    # TODO figure out how to download membership videos
+                    if p['membershipOnly']:
+                        print('Skip membership only video')
+                        continue
+                        # print(content)
+                        # real_id = content['videoId']
+                        # thumb = content['imageUrl']  # TODO embed thumbnail?
                         # 'https://apis.naver.com/neonplayer/vodplay/v3/playback/4F9EEE001779B0B5BCA8AF0B0A54E93640A0?key=V1269907f12a44da44a9116a6fcbe965ba17692f6f5a038a2700af70c7c636a35da7416a6fcbe965ba176&sid=2072&devt=html5_pc&prv=N&lc=en&cpl=en&adi=%5B%7B%22adSystem%22%3A%22null%22%7D%5D&adu=%2F'
-                        'https://weverse-rmcnmv.pstatic.net/c/download/v2/VOD_ALPHA/weverse-star-avideo/4F9EEE001779B0B5BCA8AF0B0A54E93640A0/pd/1735639118424/d076d77b-c75d-11ef-8176-a0369ffdf04c.mp4?_lsu_sa_=6da594f5c12f6c063ad085d869f585b88e963b985b002f2739973fc347903d85f42f4acd6b157a02e0bf3932da375b1a1f9a7681ba119bb94c2f5a34bd4267207d88aacaf7547b6a30fdddd650586350'
+                        # 'https://weverse-rmcnmv.pstatic.net/c/download/v2/VOD_ALPHA/weverse-star-avideo/4F9EEE001779B0B5BCA8AF0B0A54E93640A0/pd/1735639118424/d076d77b-c75d-11ef-8176-a0369ffdf04c.mp4?_lsu_sa_=6da594f5c12f6c063ad085d869f585b88e963b985b002f2739973fc347903d85f42f4acd6b157a02e0bf3932da375b1a1f9a7681ba119bb94c2f5a34bd4267207d88aacaf7547b6a30fdddd650586350'
+                    else:
+                        path = f'{MEDIA_FOLDER}/artistPosts/{author}/{post_id}_{video_id}'
+                        download_cvideo_json(video_id, path, date)
 
 
 def process_dms():
