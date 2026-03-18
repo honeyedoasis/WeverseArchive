@@ -438,7 +438,7 @@ def process_official_media(community_id):
                 path = f'{base_path}_{video_id}'
                 download_extension_video(p, path)
             else:
-                download_membership_video(video, post_id, date)
+                # download_membership_video(video, post_id, date)
                 return
 
         # if photos := p['extension'].get('image', {}).get('photos'):
