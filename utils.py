@@ -50,14 +50,21 @@ def edit_creation_date(file_path, new_date: datetime):
 #
 #     return False
 
+def has_file_matching_name(file_path):
+    file_path = Path(file_path)
+    existing_files = list(file_path.parent.glob(f"{file_path.name}.*"))
+    return len(existing_files) != 0
+
 def download_file(file_url, file_path, date=None, skip_exists=True, timeout=30):
     file_path = Path(file_path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    existing_files = list(file_path.parent.glob(f"{file_path.name}.*"))
-    if existing_files:
-        # print(f"File already exists: {existing_files[0]}")
+    if skip_exists and has_file_matching_name(file_path):
         return False
+    # existing_files = list(file_path.parent.glob(f"{file_path.name}.*"))
+    # if existing_files:
+    #     # print(f"File already exists: {existing_files[0]}")
+    #     return False
 
     retries = 3
     for _ in range(retries):

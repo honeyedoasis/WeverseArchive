@@ -47,16 +47,22 @@ SHORT_SLEEP = 0.5
 
 WVD_DEVICE_PATH = "F:/Programs/Tools/drm-tools/CDMs/1668035862.wvd"
 
+def get_media_path():
+    return f'{COMMUNITY_NAME}/{MEDIA_FOLDER}'
+
+def get_json_path():
+    return f'{COMMUNITY_NAME}/{JSON_FOLDER}'
+
 def get_media_json_path():
-    return f'{COMMUNITY_NAME}/{JSON_FOLDER}/searchAllMedia.json'
+    return f'{get_json_path()}/searchAllMedia.json'
 
 
 def get_live_json_path():
-    return f'{COMMUNITY_NAME}/{JSON_FOLDER}/liveTabPosts.json'
+    return f'{get_json_path()}/liveTabPosts.json'
 
 
 def get_artist_json_path():
-    return f'{COMMUNITY_NAME}/{JSON_FOLDER}/artistTabPosts.json'
+    return f'{get_json_path()}/artistTabPosts.json'
 
 
 # # What was this for?
@@ -278,7 +284,7 @@ def write_individual_posts(post_file, folder, write_comments=False):
     out_data = []
     for post_id in posts:
         req = f'/post/v1.0/post-{post_id}?fieldSet=postV1'
-        data = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/{folder}/{post_id}.json', True)
+        data = write_single(req, f'{get_json_path()}/{folder}/{post_id}.json', True)
         # print(data)
 
         out_data.append(data)
@@ -286,7 +292,7 @@ def write_individual_posts(post_file, folder, write_comments=False):
         if write_comments:
             print(f'Writing post comments {post_id}')
             req = f'/comment/v1.0/post-{post_id}/comments?fieldSet=postCommentsV1'
-            write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/{folder}/{post_id}.comments.json', True, True)
+            write_paged_requests(req, req, f'{get_json_path()}/{folder}/{post_id}.comments.json', True, True)
 
     return out_data
 
@@ -300,6 +306,9 @@ def download_extension_video(data, filepath):
     if data['membershipOnly']:
         return
 
+    if utils.has_file_matching_name(filepath):
+        return
+
     vod_data = get_vod_video_json(video_id)
     url = get_vod_url(vod_data)
     print('Downloading video ', post_id, filepath)
@@ -309,7 +318,7 @@ def download_extension_video(data, filepath):
 def write_live_chat():
     posts = []
 
-    with open(f'{COMMUNITY_NAME}/{JSON_FOLDER}/all_live_posts.json', 'r', encoding='utf-8') as file:
+    with open(f'{get_json_path()}/all_live_posts.json', 'r', encoding='utf-8') as file:
         json_data = json.load(file)
         for data in json_data:
             postId = data['postId']
@@ -326,7 +335,7 @@ def write_live_chat():
         postId = data['postId']
         req = f'/chat/v1.0/chat-{chatId}/artistMessages'
         # print(req, postId, data['shareUrl'])
-        write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/liveChat/{postId}.json', True, True)
+        write_paged_requests(req, req, f'{get_json_path()}/liveChat/{postId}.json', True, True)
         time.sleep(5)
 
 
@@ -410,7 +419,7 @@ def write_live_tab_posts(community_id):
 
 def get_artists(community_id):
     req = f'/artistpedia/v1.0/community-{community_id}/highlight'
-    if data := write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/artistProfiles.json', skip_exists=True):
+    if data := write_single(req, f'{get_json_path()}/artistProfiles.json', skip_exists=True):
         return data['artistProfiles']
 
     print('Error failed to get artists')
@@ -431,7 +440,7 @@ def process_official_media(community_id):
         post_id = p['postId']
         date = utils.timestamp(p['publishedAt'])
 
-        base_path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/officialMedia/{post_id}'
+        base_path = f'{get_media_path()}/officialMedia/{post_id}'
 
         if video := p['extension'].get('video'):
             if not p['membershipOnly']:
@@ -453,7 +462,7 @@ def process_official_media(community_id):
 def download_membership_video(video, post_id, date):
     video_id = video['videoId']
 
-    base_path = f'{COMMUNITY_NAME}/{JSON_FOLDER}/membership'
+    base_path = f'{get_json_path()}/membership'
 
     mpd_path = Path(f'{base_path}/{post_id}_{video_id}.mpd')
     widevine_path = Path(f'{base_path}/{post_id}_{video_id}.xml')
@@ -700,7 +709,7 @@ def process_lives(community_id):
     if DOWNLOAD_LIVE_VODS:
         for p in live_posts:
             post_id = p['postId']
-            path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/lives/{post_id}'
+            path = f'{get_media_path()}/lives/{post_id}'
             download_extension_video(p, path)
 
 
@@ -714,7 +723,7 @@ def process_member(member_json):
 
     # profile
     req = f'/member/v1.0/member-{member_id}?fields=memberId%2CcommunityId%2Cjoined%2CprofileType%2CprofileName%2CprofileImageUrl%2CprofileCoverImageUrl%2CprofileComment%2CmyProfile%2Chidden%2Cblinded%2CmemberJoinStatus%2CfirstJoinAt%2CfollowCount%2Cfollowed%2ChasMembership%2ChasOfficialMark%2CartistOfficialProfile%2CavailableActions%2CprofileSpaceStatus%2Cbadges%2CshareUrl'
-    profile_data = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/member/{member_name}/profile.json', True)
+    profile_data = write_single(req, f'{get_json_path()}/member/{member_name}/profile.json', True)
 
     if DOWNLOAD_PROFILE_PICTURES:
         pics = [
@@ -726,20 +735,20 @@ def process_member(member_json):
         for (pic_url, name) in pics:
             if pic_url:
                 url_date = utils.get_url_date(pic_url)
-                path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/profile/{name}_{url_date}'
+                path = f'{get_media_path()}/member/{member_name}/profile/{name}_{url_date}'
                 utils.download_file(pic_url, path)
 
     if WRITE_ARTIST_COMMENTS:
         # comments
         print('Downloading Member Comments: ', member_name)
         req = f'/comment/v1.0/member-{member_id}/comments?fieldSet=memberCommentsV1'
-        write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/member/{member_name}/comments.json', True)
+        write_paged_requests(req, req, f'{get_json_path()}/member/{member_name}/comments.json', True)
 
     # moments
     if DOWNLOAD_MOMENTS_JSON:
         print('Downloading Member Moments: ', member_name)
         req = f'/post/v1.0/member-{member_id}/posts?fieldSet=postsV1&filterType=MOMENT_VIEWER&limit=1'
-        moments = write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/member/{member_name}/moments.json', True)
+        moments = write_paged_requests(req, req, f'{get_json_path()}/member/{member_name}/moments.json', True)
 
         if DOWNLOAD_MOMENTS_MEDIA:
             for m in moments:
@@ -751,13 +760,13 @@ def process_member(member_json):
                     # print(momentW1)
                     if photo := momentW1.get('photo'):
                         image_url = photo['url']
-                        utils.download_file(image_url, f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
+                        utils.download_file(image_url, f'{get_media_path()}/member/{member_name}/moments/{moment_id}', date)
                 else:
                     video_id = m['extension']['moment']['video']['videoId']
-                    download_cvideo_json(video_id, f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
+                    download_cvideo_json(video_id, f'{get_media_path()}/member/{member_name}/moments/{moment_id}', date)
 
                     image_url = m['extension']['moment']['video']['uploadInfo']['imageUrl']
-                    utils.download_file(image_url, f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/moments/{moment_id}', date)
+                    utils.download_file(image_url, f'{get_media_path()}/member/{member_name}/moments/{moment_id}', date)
 
 
 def process_members():
@@ -772,7 +781,7 @@ def process_official_accounts():
 
     for id in official_channels:
         req = f'/post/v1.0/member-{id}/posts'
-        write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/official/{id}.json', True)
+        write_paged_requests(req, req, f'{get_json_path()}/official/{id}.json', True)
 
 
 def process_artist_posts(community_id):
@@ -800,21 +809,21 @@ def process_artist_posts(community_id):
                 for photo_id, content in photos.items():
                     photo_url = content['url']
 
-                    path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/artistPosts/{author}/{post_id}_{photo_id}'
+                    path = f'{get_media_path()}/artistPosts/{author}/{post_id}_{photo_id}'
                     # print('Downloading photo', path, photo_url)
                     if utils.download_file(photo_url, path, date):
                         time.sleep(1)
 
             if videos := p['attachment'].get('video'):
                 for video_id, content in videos.items():
-                    path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/artistPosts/{author}/{post_id}_{video_id}'
+                    path = f'{get_media_path()}/artistPosts/{author}/{post_id}_{video_id}'
                     download_cvideo_json(video_id, path, date)
 
 
 def process_dms():
     # TODO this doesn't work
     req = '/dm/v2.0/my/rooms'
-    all_rooms = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/dm/rooms.json', True)
+    all_rooms = write_single(req, f'{get_json_path()}/dm/rooms.json', True)
     # print(room_json)
 
     for room in all_rooms['rooms']:
@@ -823,7 +832,7 @@ def process_dms():
 
         # '/dm/v2.0/messages?appId=be4d79eb8fc7bd008ee82c8ec4ff6fd4&language=en&os=WEB&platform=WEB&prev=9223372036854775807&roomId=WR3OBRZ&transLang=en&wpf=pc&wmd=PifF4TXK5row%2BIkZIcZHUuGxGck%3D&wmsgpad=1773715693733'
         req = f'/dm/v2.0/messages?roomId={room_id}'
-        write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/dm/{room_id}.json', False)
+        write_paged_requests(req, req, f'{get_json_path()}/dm/{room_id}.json', False)
         return
 
 
@@ -832,7 +841,7 @@ def set_community_id(community_name):
     global COMMUNITY_NAME
 
     req = f'/community/v1.0/communityIdUrlPathByUrlPathArtistCode?keyword={community_name}'
-    resp = write_single(req, f'{community_name}/{JSON_FOLDER}/communityId.json')
+    resp = write_single(req, f'{get_json_path()}/communityId.json')
 
     COMMUNITY_ID = resp['communityId']
     COMMUNITY_NAME = community_name
@@ -844,11 +853,11 @@ def process_community():
     req = f'/community/v1.0/community-{COMMUNITY_ID}?fieldSet=communityHomeV1_1'
     # print(req)
     # print(call_request(req))
-    resp = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/communityHome.json', True)
+    resp = write_single(req, f'{get_json_path()}/communityHome.json', True)
     print(resp)
 
     values = { 'logoImage', 'homeHeaderImage', 'webHomeHeaderImage', }
-    base_path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/community/'
+    base_path = f'{get_media_path()}/community/'
 
     for v in values:
         if url := resp.get(v):
@@ -874,6 +883,7 @@ def download_community(community_name):
 
 def download():
     download_community('fromis9')
+    # download_community('ahnbohyun')
 
 if __name__ == '__main__':
     download()
