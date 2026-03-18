@@ -1,7 +1,8 @@
 import json
 import os
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlparse
 
 import requests
 import yt_dlp
@@ -724,7 +725,9 @@ def process_member(member_json):
 
         for (pic_url, name) in pics:
             if pic_url:
-                utils.download_file(pic_url, f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/profile/{name}')
+                url_date = utils.get_url_date(pic_url)
+                path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/member/{member_name}/profile/{name}_{url_date}'
+                utils.download_file(pic_url, path)
 
     if WRITE_ARTIST_COMMENTS:
         # comments
@@ -837,9 +840,29 @@ def set_community_id(community_name):
     return resp
 
 
+def process_community():
+    req = f'/community/v1.0/community-{COMMUNITY_ID}?fieldSet=communityHomeV1_1'
+    # print(req)
+    # print(call_request(req))
+    resp = write_single(req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/communityHome.json', True)
+    print(resp)
+
+    values = { 'logoImage', 'homeHeaderImage', 'webHomeHeaderImage', }
+    base_path = f'{COMMUNITY_NAME}/{MEDIA_FOLDER}/community/'
+
+    for v in values:
+        if url := resp.get(v):
+            url_date = utils.get_url_date(url)
+            path = f'{base_path}/{v}_{url_date}'
+            utils.download_file(url, path)
+
+    # TODO download agency profile?
+
 def download_community(community_name):
     set_community_id(community_name)
-
+    
+    process_community()
+    
     process_members()
     process_lives(COMMUNITY_ID)
     process_artist_posts(COMMUNITY_ID)

@@ -1,8 +1,10 @@
+import base64
 import datetime
 import mimetypes
 import time
 import xml.etree.ElementTree as ET
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import filedate
@@ -50,13 +52,12 @@ def edit_creation_date(file_path, new_date: datetime):
 
 def download_file(file_url, file_path, date=None, skip_exists=True, timeout=30):
     file_path = Path(file_path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
 
     existing_files = list(file_path.parent.glob(f"{file_path.name}.*"))
     if existing_files:
         # print(f"File already exists: {existing_files[0]}")
         return False
-
-    file_path.parent.mkdir(parents=True, exist_ok=True)
 
     retries = 3
     for _ in range(retries):
@@ -135,6 +136,29 @@ def get_pssh_from_mpd(mpd_text):
                         return pssh_b64
 
     return None
+
+def get_url_filename(url, no_ext=True):
+    parsed_url = urlparse(url)
+    return PurePosixPath(parsed_url.path).stem if no_ext else parsed_url.path
+
+
+def get_url_date(url):
+    """
+    Expecting a url in the format
+    https://phinf.wevpstatic.net/MjAyMjA3MTZfODQg/MDAxNjU3OTAxNTA3OTYw.XicWQ6eh1gk6nIC4GFtqWKCDiFZQCMLPvQ2lUqOjjxwg.6tnIZEYqlfnbR03YaBitEi1SxQldnjVGcnlTpMK37oAg.JPEG/aab3aeaf86d149b2aa73f9a793eebfea888.jpg
+    """
+    if not url.startswith('https://phinf.wevpstatic.net/'):
+        print('Failed to parse url date for', url)
+        breakpoint()
+
+    path_parts = urlparse(url).path.strip('/').split('/')
+    date_part_encoded = path_parts[0]  # "MjAyMzExMjNfNDgg"
+
+    # Decode it and take the first 8 characters (YYYYMMDD)
+    date_str = base64.b64decode(date_part_encoded).decode('utf-8')[:8]
+
+    return date_str
+
 
 # if __name__ == '__main__':
     # url = 'https://phinf.wevpstatic.net/MjAyNDA4MDFfODQg/MDAxNzIyNTE0NDQ3MDQ3.jd8yLmvexdRXlwRBhZBoW5v3XgKgA3ilOhglifEW-0Eg.gdKTGmOlcsShILD35eY6Hbth7Ji9NeCwexY0unn5maog.JPEG/87dfb166-b56a-4167-aecc-d657305e5413.jpeg'
