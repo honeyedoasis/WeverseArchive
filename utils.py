@@ -1,6 +1,7 @@
 import datetime
 import mimetypes
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -108,6 +109,32 @@ def timestamp(ts):
     ts_seconds = ts / 1000
     return datetime.datetime.fromtimestamp(ts_seconds, tz=ZoneInfo("Asia/Seoul"))
 
+
+def get_pssh_from_mpd(mpd_text):
+    """
+    Extracts the Widevine PSSH from MPD text, ignoring namespace variations.
+    """
+    # Parse the XML
+    root = ET.fromstring(mpd_text)
+
+    # Widevine System ID
+    WIDEVINE_UUID = "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
+
+    # 1. Iterate through all elements in the MPD
+    for elem in root.iter():
+        # Look for ContentProtection tags (ignoring the namespace prefix)
+        if elem.tag.endswith('ContentProtection'):
+            scheme_id = elem.attrib.get('schemeIdUri', '').lower()
+
+            # 2. Check if this is the Widevine block
+            if WIDEVINE_UUID in scheme_id:
+                # 3. Search children of this tag for 'pssh'
+                for child in elem:
+                    if child.tag.endswith('pssh'):
+                        pssh_b64 = child.text.strip()
+                        return pssh_b64
+
+    return None
 
 # if __name__ == '__main__':
     # url = 'https://phinf.wevpstatic.net/MjAyNDA4MDFfODQg/MDAxNzIyNTE0NDQ3MDQ3.jd8yLmvexdRXlwRBhZBoW5v3XgKgA3ilOhglifEW-0Eg.gdKTGmOlcsShILD35eY6Hbth7Ji9NeCwexY0unn5maog.JPEG/87dfb166-b56a-4167-aecc-d657305e5413.jpeg'

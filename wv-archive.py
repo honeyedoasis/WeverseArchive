@@ -1,11 +1,14 @@
-import datetime
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import requests
 import yt_dlp
 import time
 import xmltodict
+from pywidevine import PSSH, Device, Cdm
+from yt_dlp import YoutubeDL
 
 from yt_dlp.extractor.weverse import WeverseIE
 from yt_dlp.utils import ExtractorError
@@ -34,18 +37,22 @@ WRITE_ARTIST_COMMENTS = False
 DOWNLOAD_MOMENTS_JSON = True
 DOWNLOAD_MOMENTS_MEDIA = True
 DOWNLOAD_LIVE_VODS = True  # this one will take forever to process
-DOWNLOAD_POST_MEDIA = True # this doesn't work for videos atm
+DOWNLOAD_POST_MEDIA = True
 DOWNLOAD_PROFILE_PICTURES = True
-DOWNLOAD_OFFICIAL_MEDIA = False # The media in this tab https://weverse.io/fromis9/media?tab=all
+DOWNLOAD_OFFICIAL_MEDIA = False  # The media in this tab https://weverse.io/fromis9/media?tab=all
 
 PAGED_SLEEP = 10
 SHORT_SLEEP = 0.5
 
+WVD_DEVICE_PATH = "F:/Programs/Tools/drm-tools/CDMs/1668035862.wvd"
+
 def get_media_json_path():
     return f'{COMMUNITY_NAME}/{JSON_FOLDER}/searchAllMedia.json'
 
+
 def get_live_json_path():
     return f'{COMMUNITY_NAME}/{JSON_FOLDER}/liveTabPosts.json'
+
 
 def get_artist_json_path():
     return f'{COMMUNITY_NAME}/{JSON_FOLDER}/artistTabPosts.json'
@@ -158,7 +165,7 @@ def save_resume_state(filename, cursor, processed_indices=None):
     """Helper to save the current cursor/progress state."""
     state_path = Path(f"{filename}.state")
     state = {"cursor": cursor, "processed_indices": processed_indices or []}
-    state_path.write_text(json.dumps(state))
+    state_path.write_text(json.dumps(state), encoding='utf-8')
 
 
 def write_paged_requests(req, initial_req, filename, use_after, skip_exists=False):
@@ -431,8 +438,8 @@ def process_official_media(community_id):
                 path = f'{base_path}_{video_id}'
                 download_extension_video(p, path)
             else:
-                # download_membership_video(video)
-                continue
+                download_membership_video(video, post_id, date)
+                return
 
         # if photos := p['extension'].get('image', {}).get('photos'):
         #     for photo in photos:
@@ -441,38 +448,245 @@ def process_official_media(community_id):
         #         path = f'{base_path}_{photo_id}'
         #         utils.download_file(url, path, date)
 
-def download_membership_video(video):
-    # TODO download with 'https://github.com/devine-dl/pywidevine'
+
+def download_membership_video(video, post_id, date):
     video_id = video['videoId']
-    in_key_json = call_request(f'/video/v1.2/vod/{video_id}/inKey?drm=PlayReady&securityLevelByTrack=true', post=True)
-    print(in_key_json)
 
-    key = in_key_json['inKey']
+    base_path = f'{COMMUNITY_NAME}/{JSON_FOLDER}/membership'
 
-    infra_video_id = video['infraVideoId']
-    api_call = f'https://apis.naver.com/neonplayer/vodplay/v3/playback/{infra_video_id}?key={key}&drm=Widevine'
+    mpd_path = Path(f'{base_path}/{post_id}_{video_id}.mpd')
+    widevine_path = Path(f'{base_path}/{post_id}_{video_id}.xml')
+    key_json_path = Path(f'{base_path}/{post_id}_{video_id}.key')
 
-    # Headers converted from the curl -H flags
+    if not key_json_path.exists() or True:
+        key_json_path.parent.mkdir(parents=True, exist_ok=True)
+        key_json = call_request(f'/video/v1.2/vod/{video_id}/inKey?drm=Widevine&securityLevelByTrack=true', post=True)
+
+        key_json_path.write_text(json.dumps(key_json), encoding='utf-8')
+    else:
+        key_json = json.loads(key_json_path.read_text(encoding='utf-8'))
+
+    key = key_json['inKey']
+
+    if not widevine_path.exists() or True:
+        print('Requesting vod playback')
+        widevine_path.parent.mkdir(parents=True, exist_ok=True)
+
+        infra_video_id = video['infraVideoId']
+
+        api_call = f'https://apis.naver.com/neonplayer/vodplay/v3/playback/{infra_video_id}?key={key}&drm=Widevine'
+
+        # Headers converted from the curl -H flags
+        headers = {
+            'accept': 'application/xml',
+            'accept-language': 'en-AU,en;q=0.9',
+            'cache-control': 'no-cache',
+            'origin': 'https://weverse.io',
+            'pragma': 'no-cache',
+            'priority': 'u=1, i',
+            'referer': 'https://weverse.io/',
+            'sec-ch-ua': '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'cross-site',
+            'sec-fetch-storage-access': 'active',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+        }
+
+        response = requests.get(api_call, headers=headers)
+        widevine_path.write_text(response.text, encoding='utf-8')
+        widevine_xml = xmltodict.parse(response.text)
+        print(widevine_xml)
+    else:
+        widevine_xml = xmltodict.parse(widevine_path.read_text(encoding='utf-8'))
+
+    representations = widevine_xml['MPD']['Period']['AdaptationSet']['Representation']
+
+    def video_size(v):
+        return int(v['@bandwidth'])
+
+    highest_qual = sorted(representations, key=video_size, reverse=True)[0]
+    print('highest qual', highest_qual)
+
+    mpd_url = highest_qual['@xlink:href']
+
+    if not mpd_path.exists() or True:
+        mpd_path.parent.mkdir(parents=True, exist_ok=True)
+
+        print(mpd_url)
+
+        # Headers converted from the curl -H flags
+        headers = {
+            'accept': 'application/xml',
+            'accept-language': 'en-AU,en;q=0.9',
+            'cache-control': 'no-cache',
+            'origin': 'https://weverse.io',
+            'pragma': 'no-cache',
+            'priority': 'u=1, i',
+            'referer': 'https://weverse.io/',
+            'sec-ch-ua': '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'cross-site',
+            'sec-fetch-storage-access': 'active',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+        }
+
+        print('Requesting mpd ', mpd_url)
+        response = requests.get(mpd_url, headers=headers)
+        mpd_path.write_text(response.text)
+        mpd_text = response.text
+        # print(mpd_text)
+    else:
+        mpd_text = mpd_path.read_text(encoding='utf-8')
+
+    pssh = utils.get_pssh_from_mpd(mpd_text)
+
+    # license_url = highest_qual['ContentProtection']['dashif:laurl']
+    license_url = key_json['licenseUrl']
+
+    download_widevine_video(mpd_url, pssh, license_url, f'{base_path}/test.mp4')
+
+
+def get_browser_cookies(browser_name):
+    # browser_name can be 'chrome', 'firefox', 'edge', 'opera', 'vivaldi', 'safari'
+    ydl_opts = {'cookiefile': None, 'cookiesfrombrowser': (browser_name, None, None, None)}
+
+    with YoutubeDL(ydl_opts) as ydl:
+        # Extract cookies for the specific domain to keep it clean
+        cookie_jar = ydl.cookiejar
+        # Load cookies from the browser into the jar
+        ydl.plugins_extractor = []  # We don't need extractors, just the jar
+
+        # This triggers the internal yt-dlp cookie extraction logic
+        # It handles decryption (DPAPI on Windows, etc.)
+        cookies = {}
+        for cookie in cookie_jar:
+            # You can filter for specific domains if you want
+            print(cookie.domain)
+            if "weverse" in cookie.domain or "naver" in cookie.domain:
+                cookies[cookie.name] = cookie.value
+        return cookies
+
+
+def get_keys(license_url, pssh_b64):
+    print("[*] Generating License Challenge...")
+    pssh = PSSH(pssh_b64)  # pywidevine handles b64 or hex automatically
+
+    # Load your local WVD device
+    device = Device.load(WVD_DEVICE_PATH)
+    cdm = Cdm.from_device(device)
+    session_id = cdm.open()
+
+    challenge = cdm.get_license_challenge(session_id, pssh)
+
     headers = {
-        'accept': 'application/xml',
-        'accept-language': 'en-AU,en;q=0.9',
-        'cache-control': 'no-cache',
-        'origin': 'https://weverse.io',
-        'pragma': 'no-cache',
-        'priority': 'u=1, i',
-        'referer': 'https://weverse.io/',
-        'sec-ch-ua': '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'cross-site',
-        'sec-fetch-storage-access': 'active',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...",
+        "Origin": "https://weverse.io",
+        "Referer": "https://weverse.io/",
+        "Content-Type": "application/octet-stream",  # Standard for Widevine
     }
 
-    response = requests.get(api_call, headers=headers)
-    xml_data = xmltodict.parse(response.text)
+    # cookies = get_browser_cookies('firefox')
+
+    print("[*] Requesting License from Naver...")
+    # licence = requests.post(license_url, data=challenge, headers=headers, cookies=cookies)
+    licence = requests.post(license_url, data=challenge, headers=headers)
+    # licence.raise_for_status()
+
+    print(licence.text)
+
+    if licence.status_code != 200:
+        print(f"Error: License request failed with status {licence.status_code}")
+
+    # licence = requests.post("https://cwip-shaka-proxy.appspot.com/no_auth", data=challenge)
+    # licence.raise_for_status()
+
+    # parse the license response message received from the license server API
+    cdm.parse_license(session_id, licence.content)
+
+    # print keys
+    keys = []
+    for key in cdm.get_keys(session_id):
+        print(f"[{key.type}] {key.kid.hex}:{key.key.hex()}")
+        if key.type == 'CONTENT':
+            key_str = f"{key.kid.hex}:{key.key.hex()}"
+            keys.append(key_str)
+            print(f"[+] Found Key: {key_str}")
+
+    # finished, close the session, disposing of all keys and other related data
+    cdm.close(session_id)
+
+    return keys
+
+
+def download_widevine_video(mpd_url, pssh_b64, license_url, output_path):
+    """
+    1. Gets Decryption Keys via PyWidevine
+    2. Downloads encrypted streams via yt-dlp
+    3. Decrypts via mp4decrypt
+    4. Merges via ffmpeg
+    """
+
+    print('Download widevine: ')
+    print('mpd:', mpd_url)
+    print('pssh', pssh_b64)
+    print('license', license_url)
+    keys = get_keys(license_url, pssh_b64)
+
+    if not keys:
+        print("[-] No content keys found.")
+        return
+
+    # --- STEP 2: DOWNLOAD ENCRYPTED VIDEO/AUDIO ---
+    print("[*] Downloading encrypted streams...")
+    # We download video and audio separately to decrypt them individually
+    video_enc = "video_enc.mp4"
+    audio_enc = "audio_enc.m4a"
+
+    if not Path(video_enc).exists():
+        # Use yt-dlp to grab the best video and best audio
+        subprocess.run(['yt-dlp', '-f', 'bestvideo', mpd_url, '-o', video_enc, '--allow-unplayable-formats'])
+    if not Path(audio_enc).exists():
+        subprocess.run(['yt-dlp', '-f', 'bestaudio', mpd_url, '-o', audio_enc, '--allow-unplayable-formats'])
+
+    # --- STEP 3: DECRYPT ---
+    print("[*] Decrypting...")
+    video_dec = "video_dec.mp4"
+    audio_dec = "audio_dec.m4a"
+
+    # Construct decryption command (supports multiple keys if present)
+    decrypt_cmd_v = ['mp4decrypt']
+    decrypt_cmd_a = ['mp4decrypt']
+    for k in keys:
+        decrypt_cmd_v.extend(['--key', k])
+        decrypt_cmd_a.extend(['--key', k])
+
+    decrypt_cmd_v.extend([video_enc, video_dec])
+    decrypt_cmd_a.extend([audio_enc, audio_dec])
+
+    subprocess.run(decrypt_cmd_v)
+    subprocess.run(decrypt_cmd_a)
+
+    # --- STEP 4: MERGE ---
+    print(f"[*] Merging into {output_path}...")
+    subprocess.run([
+        'ffmpeg', '-y',
+        '-i', video_dec,
+        '-i', audio_dec,
+        '-c', 'copy', output_path
+    ])
+
+    # Cleanup temp files
+    for f in [video_enc, audio_enc, video_dec, audio_dec]:
+        if os.path.exists(f):
+            os.remove(f)
+
+    print("[+] Done!")
 
 
 def process_lives(community_id):
@@ -607,6 +821,7 @@ def process_dms():
         # '/dm/v2.0/messages?appId=be4d79eb8fc7bd008ee82c8ec4ff6fd4&language=en&os=WEB&platform=WEB&prev=9223372036854775807&roomId=WR3OBRZ&transLang=en&wpf=pc&wmd=PifF4TXK5row%2BIkZIcZHUuGxGck%3D&wmsgpad=1773715693733'
         req = f'/dm/v2.0/messages?roomId={room_id}'
         write_paged_requests(req, req, f'{COMMUNITY_NAME}/{JSON_FOLDER}/dm/{room_id}.json', False)
+        return
 
 
 def set_community_id(community_name):
@@ -621,6 +836,7 @@ def set_community_id(community_name):
 
     return resp
 
+
 def download_community(community_name):
     set_community_id(community_name)
 
@@ -630,12 +846,11 @@ def download_community(community_name):
     process_official_media(COMMUNITY_ID)
 
     process_official_accounts()
-    process_dms()
+    # process_dms()
 
 
 def download():
     download_community('fromis9')
-
 
 if __name__ == '__main__':
     download()
