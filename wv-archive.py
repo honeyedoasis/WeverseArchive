@@ -38,7 +38,7 @@ WRITE_ARTIST_COMMENTS = False
 DOWNLOAD_MOMENTS_JSON = True
 DOWNLOAD_MOMENTS_MEDIA = True
 DOWNLOAD_LIVE_VODS = True  # this one will take forever to process
-DOWNLOAD_POST_MEDIA = True
+DOWNLOAD_POST_MEDIA = False
 DOWNLOAD_PROFILE_PICTURES = True
 DOWNLOAD_OFFICIAL_MEDIA = False  # The media in this tab https://weverse.io/fromis9/media?tab=all
 
@@ -292,7 +292,7 @@ def write_individual_posts(post_file, folder, write_comments=False):
         if write_comments:
             print(f'Writing post comments {post_id}')
             req = f'/comment/v1.0/post-{post_id}/comments?fieldSet=postCommentsV1'
-            write_paged_requests(req, req, f'{get_json_path()}/{folder}/{post_id}.comments.json', True, True)
+            write_paged_requests(req, req, f'{get_json_path()}/{folder}/{post_id}.comments.json', True)
 
     return out_data
 
@@ -435,31 +435,32 @@ def process_official_media(community_id):
     """
     posts = write_official_media(community_id)
     for p in posts:
-        # print(p)
-
         post_id = p['postId']
         date = utils.timestamp(p['publishedAt'])
 
         base_path = f'{get_media_path()}/officialMedia/{post_id}'
 
         if video := p['extension'].get('video'):
+            video_id = video['videoId']
+            path = f'{base_path}_{video_id}'
+
             if not p['membershipOnly']:
-                video_id = video['videoId']
-                path = f'{base_path}_{video_id}'
                 download_extension_video(p, path)
             else:
-                # download_membership_video(video, post_id, date)
-                return
+                download_membership_video(video, post_id, path, date)
 
-        # if photos := p['extension'].get('image', {}).get('photos'):
-        #     for photo in photos:
-        #         url = photo['url']
-        #         photo_id = photo['photoId']
-        #         path = f'{base_path}_{photo_id}'
-        #         utils.download_file(url, path, date)
+        if photos := p['extension'].get('image', {}).get('photos'):
+            for photo in photos:
+                url = photo['url']
+                photo_id = photo['photoId']
+                path = f'{base_path}_{photo_id}'
+                utils.download_file(url, path, date)
 
 
-def download_membership_video(video, post_id, date):
+def download_membership_video(video, post_id, path, date):
+    if Path(path + '.mp4').exists():
+        return
+
     video_id = video['videoId']
 
     base_path = f'{get_json_path()}/membership'
@@ -512,15 +513,7 @@ def download_membership_video(video, post_id, date):
     else:
         widevine_xml = xmltodict.parse(widevine_path.read_text(encoding='utf-8'))
 
-    representations = widevine_xml['MPD']['Period']['AdaptationSet']['Representation']
-
-    def video_size(v):
-        return int(v['@bandwidth'])
-
-    highest_qual = sorted(representations, key=video_size, reverse=True)[0]
-    print('highest qual', highest_qual)
-
-    mpd_url = highest_qual['@xlink:href']
+    mpd_url = widevine_xml['MPD']['Period']['@xlink:href']
 
     if not mpd_path.exists() or True:
         mpd_path.parent.mkdir(parents=True, exist_ok=True)
@@ -559,7 +552,7 @@ def download_membership_video(video, post_id, date):
     # license_url = highest_qual['ContentProtection']['dashif:laurl']
     license_url = key_json['licenseUrl']
 
-    download_widevine_video(mpd_url, pssh, license_url, f'{base_path}/test.mp4')
+    download_widevine_video(mpd_url, pssh, license_url, path, date)
 
 
 def get_browser_cookies(browser_name):
@@ -601,20 +594,12 @@ def get_keys(license_url, pssh_b64):
         "Content-Type": "application/octet-stream",  # Standard for Widevine
     }
 
-    # cookies = get_browser_cookies('firefox')
-
     print("[*] Requesting License from Naver...")
-    # licence = requests.post(license_url, data=challenge, headers=headers, cookies=cookies)
     licence = requests.post(license_url, data=challenge, headers=headers)
-    # licence.raise_for_status()
-
-    print(licence.text)
+    licence.raise_for_status()
 
     if licence.status_code != 200:
         print(f"Error: License request failed with status {licence.status_code}")
-
-    # licence = requests.post("https://cwip-shaka-proxy.appspot.com/no_auth", data=challenge)
-    # licence.raise_for_status()
 
     # parse the license response message received from the license server API
     cdm.parse_license(session_id, licence.content)
@@ -634,7 +619,7 @@ def get_keys(license_url, pssh_b64):
     return keys
 
 
-def download_widevine_video(mpd_url, pssh_b64, license_url, output_path):
+def download_widevine_video(mpd_url, pssh_b64, license_url, output_path, date=None):
     """
     1. Gets Decryption Keys via PyWidevine
     2. Downloads encrypted streams via yt-dlp
@@ -652,22 +637,23 @@ def download_widevine_video(mpd_url, pssh_b64, license_url, output_path):
         print("[-] No content keys found.")
         return
 
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
     # --- STEP 2: DOWNLOAD ENCRYPTED VIDEO/AUDIO ---
     print("[*] Downloading encrypted streams...")
     # We download video and audio separately to decrypt them individually
-    video_enc = "video_enc.mp4"
-    audio_enc = "audio_enc.m4a"
+    video_enc = output_path.with_name(f"{output_path.stem}_enc.mp4")
+    audio_enc = output_path.with_name(f"{output_path.stem}_enc.m4a")
 
-    if not Path(video_enc).exists():
-        # Use yt-dlp to grab the best video and best audio
-        subprocess.run(['yt-dlp', '-f', 'bestvideo', mpd_url, '-o', video_enc, '--allow-unplayable-formats'])
-    if not Path(audio_enc).exists():
-        subprocess.run(['yt-dlp', '-f', 'bestaudio', mpd_url, '-o', audio_enc, '--allow-unplayable-formats'])
+    # Use yt-dlp to grab the best video and best audio
+    subprocess.run(['yt-dlp', '-f', 'bestvideo', mpd_url, '-o', str(video_enc), '--allow-unplayable-formats'])
+    subprocess.run(['yt-dlp', '-f', 'bestaudio', mpd_url, '-o', str(audio_enc), '--allow-unplayable-formats'])
 
     # --- STEP 3: DECRYPT ---
     print("[*] Decrypting...")
-    video_dec = "video_dec.mp4"
-    audio_dec = "audio_dec.m4a"
+    video_dec = output_path.with_name(f"{output_path.stem}_dec.mp4")
+    audio_dec = output_path.with_name(f"{output_path.stem}_dec.m4a")
 
     # Construct decryption command (supports multiple keys if present)
     decrypt_cmd_v = ['mp4decrypt']
@@ -676,25 +662,29 @@ def download_widevine_video(mpd_url, pssh_b64, license_url, output_path):
         decrypt_cmd_v.extend(['--key', k])
         decrypt_cmd_a.extend(['--key', k])
 
-    decrypt_cmd_v.extend([video_enc, video_dec])
-    decrypt_cmd_a.extend([audio_enc, audio_dec])
+    decrypt_cmd_v.extend([str(video_enc), str(video_dec)])
+    decrypt_cmd_a.extend([str(audio_enc), str(audio_dec)])
 
     subprocess.run(decrypt_cmd_v)
     subprocess.run(decrypt_cmd_a)
 
     # --- STEP 4: MERGE ---
-    print(f"[*] Merging into {output_path}...")
+    merged_path = output_path.with_suffix(".mp4")
+    print(f"[*] Merging into {merged_path}...")
     subprocess.run([
         'ffmpeg', '-y',
-        '-i', video_dec,
-        '-i', audio_dec,
-        '-c', 'copy', output_path
+        '-i', str(video_dec),
+        '-i', str(audio_dec),
+        '-c', 'copy', str(merged_path)
     ])
+
+    if merged_path.exists():
+        utils.edit_creation_date(merged_path, date)
 
     # Cleanup temp files
     for f in [video_enc, audio_enc, video_dec, audio_dec]:
-        if os.path.exists(f):
-            os.remove(f)
+        if f.exists():
+            f.unlink()
 
     print("[+] Done!")
 
@@ -710,7 +700,14 @@ def process_lives(community_id):
         for p in live_posts:
             post_id = p['postId']
             path = f'{get_media_path()}/lives/{post_id}'
-            download_extension_video(p, path)
+            date = utils.timestamp(p['publishedAt'])
+
+            if p['membershipOnly']:
+                if video := p['extension'].get('video'):
+                    download_membership_video(video, post_id, path, date)
+                print(p)
+            else:
+                download_extension_video(p, path)
 
 
 def process_member(member_json):
