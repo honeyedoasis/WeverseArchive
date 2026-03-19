@@ -77,6 +77,26 @@ def get_artist_json_path():
 #     'nagyung': '233441',  # ng
 # }
 
+passwords = {
+    '0-119852324': '',
+    '0-59825': '1154',
+    '0-58709': '0107',
+    '4-120566436': '0124',
+    '1-7529': '0601',
+    '0-54144': '0122',
+    '1-119817916': '0124',
+    '3-120472027': '7777',
+    '3-120082099': '1123',
+    '4-119844206': '0605',
+    '4-120717949': '0320',
+    '1-119739859': '4444',
+    '2-120747570': '0320',
+    '0-119985805': '1111',
+    '0-3962': '1004',
+    '0-4013': '360',
+    '0-104750': 'BABABABAB',
+}
+
 """
 Get this by finding the profile of the official channel
 Example: https://weverse.io/fromis9/profile/58afde0dbc1fccd94cd44eff91fa3673
@@ -137,8 +157,7 @@ def run_extr(extr, req, out_data=None, grab_data=True, post=False):
             break
         except Exception as e:
             print(e)
-            breakpoint()
-            time.sleep(5.0)
+            return None
 
     if out_data is not None:
         if grab_data:
@@ -264,9 +283,9 @@ def write_single(req, filename, skip_exists=True):
 
     extr = make_extractor()
     data = run_extr(extr, req)
-
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(json.dumps(data, indent=4), encoding='utf-8')
+    if data:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(json.dumps(data, indent=4), encoding='utf-8')
 
     time.sleep(SHORT_SLEEP)
 
@@ -284,8 +303,11 @@ def write_individual_posts(post_file, folder, write_comments=False):
     out_data = []
     for post_id in posts:
         req = f'/post/v1.0/post-{post_id}?fieldSet=postV1'
+        if password := passwords.get(post_id):
+            req += f"&lockPassword={password}"
+            print(f'Downloading locked post {post_id} with pass {password}')
+
         data = write_single(req, f'{get_json_path()}/{folder}/{post_id}.json', True)
-        # print(data)
 
         out_data.append(data)
 
