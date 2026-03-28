@@ -1,5 +1,7 @@
 # Weverse Archiver
 
+**This is for learning / reference. I recommend checking out: https://github.com/woogie0923/archiverse**
+
 A simple tool to archive posts, media, and metadata from Weverse communities.
 
 Currently it mainly archives json data. Limitations on downloading videos in posts.
